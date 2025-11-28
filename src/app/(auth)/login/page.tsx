@@ -68,15 +68,16 @@ export default function LoginPage() {
         });
         
         // Redirect based on user role
-        const dashboardPath = {
+        const role = result.user.role as 'student' | 'teacher' | 'hod' | 'principal';
+        const dashboardPath: Record<string, string> = {
           student: '/student',
           teacher: '/teacher',
           hod: '/hod',
           principal: '/principal',
-        }[result.user.role] || '/login';
+        };
         
         // Use replace to prevent back button issues
-        router.replace(dashboardPath);
+        router.replace(dashboardPath[role] || '/login');
       } else {
         throw new Error('Invalid credentials');
       }

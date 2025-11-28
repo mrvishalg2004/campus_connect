@@ -17,7 +17,11 @@ export const metadata: Metadata = {
   title: 'CampusConnect',
   description: 'The all-in-one platform for modern education.',
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/icon.svg',
   },
 };
 

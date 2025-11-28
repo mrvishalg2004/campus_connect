@@ -31,11 +31,19 @@ export async function GET(request: NextRequest) {
       .populate('studentId', 'name email role avatarUrl')
       .populate('answers.authorId', 'name email role avatarUrl')
       .populate('resolvedBy', 'name email role')
-      .sort({ timestamp: -1 });
+      .sort({ timestamp: -1 })
+      .lean();
 
     console.log('=== Doubts GET: Found ===', doubts.length);
 
-    return NextResponse.json({ success: true, data: doubts });
+    return NextResponse.json(
+      { success: true, data: doubts },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        },
+      }
+    );
   } catch (error: any) {
     console.error('=== Doubts GET: Error ===', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

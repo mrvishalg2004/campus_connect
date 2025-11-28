@@ -36,9 +36,17 @@ export async function GET(request: NextRequest) {
     const notifications = await Notification.find(query)
       .populate('userId', 'name email')
       .sort({ timestamp: -1 })
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
-    return NextResponse.json({ success: true, data: notifications });
+    return NextResponse.json(
+      { success: true, data: notifications },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
+        },
+      }
+    );
   } catch (error: any) {
     console.error('Error fetching notifications:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

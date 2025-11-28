@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { CornerDownLeft, Loader2, Bot } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -12,9 +12,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { aiChatbotStudent } from '@/ai/flows/ai-chatbot-student';
 import { useAuth } from '@/hooks/use-auth';
 import { ScrollArea } from '../ui/scroll-area';
+
+// Lazy load AI chatbot function to reduce initial bundle
+const loadAiChatbot = () => import('@/ai/flows/ai-chatbot-student').then(m => m.aiChatbotStudent);
 
 interface Message {
     id: string;
@@ -42,6 +44,7 @@ export default function AiChatbot() {
     setIsLoading(true);
 
     try {
+        const aiChatbotStudent = await loadAiChatbot();
         const aiResponseText = await aiChatbotStudent({
             userId: user.id,
             message: inputValue,

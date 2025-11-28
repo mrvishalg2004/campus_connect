@@ -37,11 +37,14 @@ export async function GET(request: NextRequest) {
 
     const materials = await Material.find(query)
       .populate('teacherId', 'name email role')
-      .sort({ uploadDate: -1 });
+      .sort({ uploadDate: -1 })
+      .lean(); // Use lean() for better performance
 
     console.log('=== Materials GET: Found ===', materials.length);
 
-    return NextResponse.json({ success: true, data: materials });
+    const response = NextResponse.json({ success: true, data: materials });
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (error: any) {
     console.error('=== Materials GET: Error ===', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

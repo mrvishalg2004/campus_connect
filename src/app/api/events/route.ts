@@ -14,10 +14,14 @@ export async function GET() {
     
     const events = await Event.find()
       .populate('organizer', 'name email')
-      .sort({ startDate: 1 });
+      .sort({ startDate: 1 })
+      .lean(); // Use lean() for faster queries
     
     console.log('=== Events GET: Found ===', events.length, 'events');
-    return NextResponse.json(events);
+    
+    const response = NextResponse.json(events);
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (error) {
     console.error('=== Events GET: Error ===', error);
     return NextResponse.json(

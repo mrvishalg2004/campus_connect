@@ -49,27 +49,46 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
-    const result = await login(values.email, values.password);
-    if (result.success && result.user) {
-      toast({
-        title: 'Login Successful',
-        description: 'Redirecting to your dashboard...',
-      });
-      // Redirect immediately based on user role
-      const dashboardPath = {
-        student: '/student',
-        teacher: '/teacher',
-        hod: '/hod',
-        principal: '/principal',
-      }[result.user.role] || '/login';
+    
+    try {
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
       
-      router.push(dashboardPath);
-    } else {
+      const result = await Promise.race([
+        login(values.email, values.password),
+        timeoutPromise
+      ]) as { success: boolean; user?: any };
+      
+      if (result.success && result.user) {
+        toast({
+          title: 'Login Successful',
+          description: 'Redirecting to your dashboard...',
+        });
+        
+        // Redirect based on user role
+        const dashboardPath = {
+          student: '/student',
+          teacher: '/teacher',
+          hod: '/hod',
+          principal: '/principal',
+        }[result.user.role] || '/login';
+        
+        // Use replace to prevent back button issues
+        router.replace(dashboardPath);
+      } else {
+        throw new Error('Invalid credentials');
+      }
+    } catch (error: any) {
       toast({
         variant: 'destructive',
         title: 'Login Failed',
-        description: 'Invalid email or password. Please try again.',
+        description: error.message === 'Request timeout' 
+          ? 'Connection timeout. Please try again.'
+          : 'Invalid email or password. Please try again.',
       });
+    } finally {
       setIsLoading(false);
     }
   }

@@ -70,12 +70,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<LoginResult> => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const { data } = await response.json();
@@ -86,8 +92,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Login failed:', error.error);
         return { success: false };
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
       return { success: false };
     }
   };

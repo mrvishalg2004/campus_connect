@@ -34,7 +34,7 @@ const summarizeMaterialsFlow = ai.defineFlow(
     inputSchema: SummarizeMaterialsInputSchema,
     outputSchema: SummarizeMaterialsOutputSchema,
   },
-  async input => {
+  async (input: SummarizeMaterialsInput) => {
     const {output} = await summarizeMaterialsPrompt(input);
     return output!;
   }

@@ -8,38 +8,39 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
 // POST - Login user
 export async function POST(request: NextRequest) {
   try {
+    console.log('=== Login Route: Starting ===');
     await dbConnect();
+    console.log('=== Login Route: DB Connected ===');
 
     const body = await request.json();
+    console.log('=== Login Route: Body received ===', { email: body.email });
     const { email, password } = body;
 
     // Validate input
     if (!email || !password) {
+      console.log('=== Login Route: Validation failed ===', { hasEmail: !!email, hasPassword: !!password });
       return NextResponse.json(
         { error: 'Email and password are required' },
         { status: 400 }
       );
     }
 
-    // Find user with password field - add lean() for faster query
-    const user = await User.findOne({ email: email.toLowerCase() })
-      .select('+password')
-      .lean()
-      .exec();
+    // Find user with password field
+    console.log('=== Login Route: Finding user ===', { email: email.toLowerCase() });
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    console.log('=== Login Route: User found ===', { found: !!user, userId: user?._id });
     
     if (!user) {
-      // Use same error message to prevent user enumeration
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       );
     }
 
-    // Create a temporary user instance for comparePassword method
-    const userDoc = new User(user);
-    
-    // Check password using the user document method
-    const isPasswordValid = await userDoc.comparePassword(password);
+    // Check password
+    console.log('=== Login Route: Comparing password ===');
+    const isPasswordValid = await user.comparePassword(password);
+    console.log('=== Login Route: Password comparison result ===', { isValid: isPasswordValid });
     
     if (!isPasswordValid) {
       return NextResponse.json(
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate JWT token
+    console.log('=== Login Route: Generating JWT ===');
     const token = jwt.sign(
       { 
         userId: user._id,
@@ -58,6 +60,7 @@ export async function POST(request: NextRequest) {
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+    console.log('=== Login Route: JWT generated ===', { tokenLength: token.length });
 
     // Return user data without password
     const userResponse = {
@@ -86,9 +89,11 @@ export async function POST(request: NextRequest) {
       path: '/',
     });
 
+    console.log('=== Login Route: Success ===');
     return response;
   } catch (error: any) {
-    console.error('Login error:', error.message);
+    console.error('=== Login error ===:', error);
+    console.error('=== Login error stack ===:', error.stack);
     return NextResponse.json(
       { error: error.message || 'Login failed' },
       { status: 500 }

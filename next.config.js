@@ -72,6 +72,7 @@ const nextConfig = {
   transpilePackages: ['@genkit-ai/ai', '@genkit-ai/core', '@genkit-ai/flow', '@genkit-ai/googleai'],
   experimental: {
     esmExternals: 'loose',
+    optimizeCss: true,
     optimizePackageImports: ['lucide-react', '@/components/ui'],
   },
 }

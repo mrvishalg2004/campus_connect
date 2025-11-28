@@ -49,47 +49,27 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
-    
-    try {
-      // Add timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 10000)
-      );
+    const result = await login(values.email, values.password);
+    if (result.success && result.user) {
+      toast({
+        title: 'Login Successful',
+        description: 'Redirecting to your dashboard...',
+      });
+      // Redirect immediately based on user role
+      const dashboardPath = {
+        student: '/student',
+        teacher: '/teacher',
+        hod: '/hod',
+        principal: '/principal',
+      }[result.user.role] || '/login';
       
-      const result = await Promise.race([
-        login(values.email, values.password),
-        timeoutPromise
-      ]) as { success: boolean; user?: any };
-      
-      if (result.success && result.user) {
-        toast({
-          title: 'Login Successful',
-          description: 'Redirecting to your dashboard...',
-        });
-        
-        // Redirect based on user role
-        const role = result.user.role as 'student' | 'teacher' | 'hod' | 'principal';
-        const dashboardPath: Record<string, string> = {
-          student: '/student',
-          teacher: '/teacher',
-          hod: '/hod',
-          principal: '/principal',
-        };
-        
-        // Use replace to prevent back button issues
-        router.replace(dashboardPath[role] || '/login');
-      } else {
-        throw new Error('Invalid credentials');
-      }
-    } catch (error: any) {
+      router.push(dashboardPath);
+    } else {
       toast({
         variant: 'destructive',
         title: 'Login Failed',
-        description: error.message === 'Request timeout' 
-          ? 'Connection timeout. Please try again.'
-          : 'Invalid email or password. Please try again.',
+        description: 'Invalid email or password. Please try again.',
       });
-    } finally {
       setIsLoading(false);
     }
   }

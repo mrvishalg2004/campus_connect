@@ -30,14 +30,14 @@ async function dbConnect() {
       maxPoolSize: 10,
       minPoolSize: 2,
       maxIdleTimeMS: 10000,
-      serverSelectionTimeoutMS: 3000, // Reduced from 5000
-      socketTimeoutMS: 20000, // Reduced from 45000
-      connectTimeoutMS: 3000, // Added
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
       family: 4,
       compressors: ['zlib'] as ('zlib' | 'snappy' | 'zstd' | 'none')[],
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
+      console.log('MongoDB connected successfully');
       return mongoose;
     });
   }

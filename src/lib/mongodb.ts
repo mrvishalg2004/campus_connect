@@ -33,7 +33,7 @@ async function dbConnect() {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
       family: 4,
-      compressors: ['zlib'],
+      compressors: ['zlib'] as ('zlib' | 'snappy' | 'zstd' | 'none')[],
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {

@@ -40,7 +40,7 @@ export default function ProfilePage() {
         phone: user.phone || '',
         address: user.address || '',
         department: user.department || '',
-        semester: user.semester || '',
+        semester: user.semester?.toString() || '',
         rollNumber: user.rollNumber || '',
         avatarUrl: user.avatarUrl || '',
       });

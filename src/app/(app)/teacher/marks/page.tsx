@@ -68,9 +68,9 @@ export default function MarksPage() {
     setMarks(prev => ({ ...prev, [studentId]: score }));
   };
 
-  const calculateAverage = () => {
+  const calculateAverage = (): string => {
     const validMarks = Object.values(marks).filter(m => m > 0);
-    if (validMarks.length === 0) return 0;
+    if (validMarks.length === 0) return '0';
     return (validMarks.reduce((a, b) => a + b, 0) / validMarks.length).toFixed(2);
   };
 

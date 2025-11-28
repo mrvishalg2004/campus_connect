@@ -42,7 +42,7 @@ const aiChatbotStudentFlow = ai.defineFlow(
     inputSchema: AIChatbotStudentInputSchema,
     outputSchema: AIChatbotStudentOutputSchema,
   },
-  async (input) => {
+  async (input: AIChatbotStudentInput) => {
     const { text } = await ai.generate({
       prompt: aiChatbotStudentPrompt,
       model: 'googleai/gemini-2.5-flash',

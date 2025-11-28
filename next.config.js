@@ -15,6 +15,21 @@ const nextConfig = {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   webpack: (config, { isServer }) => {
+    // Ignore dev.ts and OpenTelemetry optional dependencies in production
+    config.ignoreWarnings = [
+      { module: /node_modules\/@opentelemetry\/sdk-node/ },
+      { module: /node_modules\/require-in-the-middle/ },
+      { module: /node_modules\/@genkit-ai\/core/ },
+    ];
+    
+    // Exclude dev.ts from builds
+    if (process.env.NODE_ENV === 'production') {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@/ai/dev': false,
+      };
+    }
+    
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

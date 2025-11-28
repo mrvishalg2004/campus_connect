@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Doubt from '@/models/Doubt';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
@@ -39,7 +40,7 @@ export async function POST(
       isAnonymous: body.isAnonymous !== undefined ? body.isAnonymous : true,
       files: body.files || [],
       createdAt: new Date(),
-      authorId: decoded.userId, // Store author ID for tracking even if anonymous
+      authorId: new mongoose.Types.ObjectId(decoded.userId), // Store author ID for tracking even if anonymous
     };
 
     doubt.answers.push(answer);

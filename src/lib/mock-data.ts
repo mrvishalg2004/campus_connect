@@ -74,6 +74,6 @@ export const mockLibraryResources: LibraryResource[] = [
     { id: 'res2', title: 'Data Structures and Algorithms', author: 'Prof. John Smith', type: 'video', tags: ['cs', 'dsa', 'lecture'], url: '#' },
     { id: 'res3', title: 'A Brief History of Time', author: 'Stephen Hawking', type: 'paper', tags: ['cosmology', 'physics'], url: '#' },
     { id: 'res4', title: 'Machine Learning Yearning', author: 'Andrew Ng', type: 'pdf', tags: ['cs', 'ml', 'ai'], url: '#' },
-    { id: 'res5', title: 'Organic Chemistry Fundamentals', author: 'Dr. Evelyn Reed', type: 'notes', tags: ['chemistry', 'organic'], url: '#' },
+    { id: 'res5', title: 'Organic Chemistry Fundamentals', author: 'Dr. Evelyn Reed', type: 'pdf', tags: ['chemistry', 'organic'], url: '#' },
     { id: 'res6', title: 'The Art of Computer Programming', author: 'Donald Knuth', type: 'paper', tags: ['cs', 'algorithms', 'classic'], url: '#' }
 ];

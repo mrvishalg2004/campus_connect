@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db';
+import dbConnect from '@/lib/mongodb';
 import Notice from '@/models/Notice';
 
 // GET - Fetch all notices
 export async function GET() {
   try {
-    await connectDB();
+    await dbConnect();
     const notices = await Notice.find()
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
@@ -23,7 +23,7 @@ export async function GET() {
 // POST - Create new notice
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
+    await dbConnect();
     const body = await request.json();
     
     const notice = await Notice.create(body);

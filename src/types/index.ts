@@ -7,6 +7,11 @@ export interface User {
   email: string;
   role: Role;
   avatarUrl: string;
+  phone?: string;
+  address?: string;
+  department?: string;
+  semester?: number | string;
+  rollNumber?: string;
 }
 
 export interface Attendance {

@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     };
 
     const material = await Material.create(materialData);
-    console.log('=== Materials POST: Created ===', material._id);
+    console.log('=== Materials POST: Created ===', (material as any)._id);
 
     const populatedMaterial = await Material.findById((material as any)._id)
       .populate('teacherId', 'name email role');

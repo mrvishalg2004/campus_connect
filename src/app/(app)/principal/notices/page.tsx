@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,24 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Send, Eye } from "lucide-react";
+import { Plus, Send, Eye, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from '@/hooks/use-auth';
+
+interface Notice {
+  _id: string;
+  title: string;
+  content: string;
+  category: string;
+  priority: string;
+  targetAudience: {
+    departments: string[];
+    years: number[];
+    roles: string[];
+  };
+  status: string;
+  createdAt: string;
+}
 
 export default function NoticesPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -22,34 +38,42 @@ export default function NoticesPage() {
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const departments = ['Computer Science', 'Electronics', 'Mechanical', 'Civil', 'IT', 'Chemical'];
   const years = [1, 2, 3, 4];
   const roles = ['student', 'teacher', 'hod'];
 
-  const notices = [
-    {
-      id: 1,
-      title: 'Mid-Semester Examination Schedule',
-      category: 'examination',
-      priority: 'high',
-      targetAudience: 'All Students',
-      createdAt: '2024-11-20',
-      status: 'active',
-    },
-    {
-      id: 2,
-      title: 'Faculty Development Workshop',
-      category: 'academic',
-      priority: 'medium',
-      targetAudience: 'All Faculty',
-      createdAt: '2024-11-18',
-      status: 'active',
-    },
-  ];
+  const fetchNotices = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/notices');
+      if (!res.ok) throw new Error('Failed to fetch notices');
+      const data = await res.json();
+      setNotices(data);
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Failed to load notices",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const handleCreate = () => {
+  useEffect(() => {
+    fetchNotices();
+  }, []);
+
+  const handleCreate = async () => {
     if (!title || !content || !category) {
       toast({
         title: "Missing Information",
@@ -59,17 +83,58 @@ export default function NoticesPage() {
       return;
     }
 
-    toast({
-      title: "Notice Created Successfully",
-      description: "The notice has been published to target audience",
-    });
-    setShowCreateDialog(false);
-    setTitle('');
-    setContent('');
-    setCategory('');
-    setSelectedDepts([]);
-    setSelectedYears([]);
-    setSelectedRoles([]);
+    try {
+      setSubmitting(true);
+      
+      const targetAudienceString = [
+        ...selectedDepts,
+        ...selectedYears.map(y => `Year ${y}`),
+        ...selectedRoles
+      ].join(', ');
+      
+      const payload = {
+        title,
+        content,
+        category,
+        priority,
+        targetAudience: targetAudienceString || 'All',
+        status: 'active',
+        createdBy: user?._id || user?.id,
+      };
+
+      const res = await fetch('/api/notices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) throw new Error('Failed to create notice');
+
+      toast({
+        title: "Notice Created Successfully",
+        description: "The notice has been published to target audience",
+      });
+      
+      setShowCreateDialog(false);
+      setTitle('');
+      setContent('');
+      setCategory('');
+      setSelectedDepts([]);
+      setSelectedYears([]);
+      setSelectedRoles([]);
+      
+      // Refresh list
+      fetchNotices();
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Failed to create notice",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getPriorityBadge = (priority: string) => {
@@ -84,7 +149,7 @@ export default function NoticesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Notice Management</h1>
           <p className="text-muted-foreground">Create and manage college-wide circulars</p>
@@ -101,40 +166,52 @@ export default function NoticesPage() {
           <CardDescription>Manage all college communications</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Target Audience</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {notices.map((notice) => (
-                <TableRow key={notice.id}>
-                  <TableCell className="font-medium">{notice.title}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{notice.category}</Badge>
-                  </TableCell>
-                  <TableCell>{getPriorityBadge(notice.priority)}</TableCell>
-                  <TableCell>{notice.targetAudience}</TableCell>
-                  <TableCell>{notice.createdAt}</TableCell>
-                  <TableCell>
-                    <Badge>{notice.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+          {loading ? (
+             <div className="flex justify-center p-8">
+               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+             </div>
+          ) : notices.length === 0 ? (
+             <div className="text-center p-8 text-muted-foreground">
+               No notices published yet.
+             </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Target Audience</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {notices.map((notice) => (
+                  <TableRow key={notice._id}>
+                    <TableCell className="font-medium">{notice.title}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{notice.category}</Badge>
+                    </TableCell>
+                    <TableCell className="capitalize">{getPriorityBadge(notice.priority)}</TableCell>
+                    <TableCell className="max-w-[150px] truncate" title={typeof notice.targetAudience === 'string' ? notice.targetAudience : 'All'}>
+                      {typeof notice.targetAudience === 'string' ? notice.targetAudience : 'All'}
+                    </TableCell>
+                    <TableCell>{new Date(notice.createdAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Badge className="capitalize">{notice.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -268,11 +345,11 @@ export default function NoticesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={handleCreate}>
-              <Send className="mr-2 h-4 w-4" />
+            <Button onClick={handleCreate} disabled={submitting}>
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
               Publish Notice
             </Button>
           </DialogFooter>
@@ -281,3 +358,4 @@ export default function NoticesPage() {
     </div>
   );
 }
+

@@ -9,26 +9,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
-import { Check, X, Calendar as CalendarIcon, User, AlertCircle } from "lucide-react";
+import { Check, X, Calendar as CalendarIcon, User, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { useAuth } from '@/hooks/use-auth';
 
 interface LeaveRequest {
   _id: string;
-  facultyId: { name: string; email: string };
+  facultyId: { _id?: string; name: string; email: string };
   startDate: string;
   endDate: string;
   reason: string;
   type: string;
   status: 'pending' | 'approved' | 'rejected';
-  substituteTeacherId?: { name: string };
+  substituteTeacherId?: { _id?: string; name: string };
 }
 
 interface Faculty {
   _id: string;
   name: string;
   email: string;
-  expertiseTags?: string[];
+  department?: string;
 }
 
 export default function FacultyManagementPage() {
@@ -39,8 +40,12 @@ export default function FacultyManagementPage() {
   const [showCalendarView, setShowCalendarView] = useState(false);
   const [substituteTeacher, setSubstituteTeacher] = useState('');
   const [comments, setComments] = useState('');
+  
   const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchLeaveRequests();
@@ -50,38 +55,12 @@ export default function FacultyManagementPage() {
   const fetchLeaveRequests = async () => {
     try {
       setLoading(true);
-      // Mock data for now
-      setLeaveRequests([
-        {
-          _id: '1',
-          facultyId: { name: 'Dr. Evelyn Reed', email: 'reed@university.edu' },
-          startDate: '2024-12-10',
-          endDate: '2024-12-12',
-          reason: 'Personal emergency - family medical issue',
-          type: 'personal',
-          status: 'pending',
-        },
-        {
-          _id: '2',
-          facultyId: { name: 'Prof. John Smith', email: 'smith@university.edu' },
-          startDate: '2024-12-15',
-          endDate: '2024-12-15',
-          reason: 'Medical appointment',
-          type: 'sick',
-          status: 'pending',
-        },
-        {
-          _id: '3',
-          facultyId: { name: 'Prof. Alan Jones', email: 'jones@university.edu' },
-          startDate: '2024-11-20',
-          endDate: '2024-11-21',
-          reason: 'International conference on AI',
-          type: 'conference',
-          status: 'approved',
-          substituteTeacherId: { name: 'Dr. Sarah Lee' },
-        },
-      ]);
+      const res = await fetch('/api/leaves');
+      if (!res.ok) throw new Error('Failed to fetch leave requests');
+      const data = await res.json();
+      setLeaveRequests(data);
     } catch (error) {
+      console.error(error);
       toast({
         title: "Error",
         description: "Failed to fetch leave requests",
@@ -93,12 +72,16 @@ export default function FacultyManagementPage() {
   };
 
   const fetchAvailableFaculty = async () => {
-    // Mock data
-    setAvailableFaculty([
-      { _id: '1', name: 'Dr. Sarah Lee', email: 'lee@university.edu', expertiseTags: ['AI', 'Machine Learning'] },
-      { _id: '2', name: 'Prof. Mike Brown', email: 'brown@university.edu', expertiseTags: ['Databases', 'Web Dev'] },
-      { _id: '3', name: 'Dr. Lisa White', email: 'white@university.edu', expertiseTags: ['Networks', 'Security'] },
-    ]);
+    try {
+      // Fetch all teachers that can act as substitutes
+      const res = await fetch('/api/users?role=teacher');
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableFaculty(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch faculty:', error);
+    }
   };
 
   const handleApprove = (request: LeaveRequest) => {
@@ -108,22 +91,39 @@ export default function FacultyManagementPage() {
 
   const handleReject = async (requestId: string) => {
     try {
-      // API call would go here
+      setProcessingId(requestId);
+      const res = await fetch(`/api/leaves/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'rejected',
+          reviewedBy: user?._id || user?.id,
+          reviewedAt: new Date(),
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to reject leave');
+
       toast({
         title: "Leave Request Rejected",
         description: "The faculty member will be notified.",
       });
       fetchLeaveRequests();
     } catch (error) {
+      console.error(error);
       toast({
         title: "Error",
         description: "Failed to reject leave request",
         variant: "destructive",
       });
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleSubmitApproval = async () => {
+    if (!selectedRequest) return;
+    
     try {
       if (!substituteTeacher) {
         toast({
@@ -134,30 +134,49 @@ export default function FacultyManagementPage() {
         return;
       }
 
-      // API call would go here
+      setProcessingId(selectedRequest._id);
+      
+      const res = await fetch(`/api/leaves/${selectedRequest._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'approved',
+          substituteTeacherId: substituteTeacher,
+          comments,
+          reviewedBy: user?._id || user?.id,
+          reviewedAt: new Date(),
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to approve leave');
+
       toast({
         title: "Leave Request Approved",
         description: "Substitute teacher has been assigned and notified.",
       });
+      
       setShowApprovalDialog(false);
       setSubstituteTeacher('');
       setComments('');
       fetchLeaveRequests();
     } catch (error) {
+      console.error(error);
       toast({
         title: "Error",
         description: "Failed to approve leave request",
         variant: "destructive",
       });
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'pending':
         return <Badge variant="secondary">Pending</Badge>;
       case 'approved':
-        return <Badge>Approved</Badge>;
+        return <Badge className="bg-green-600">Approved</Badge>;
       case 'rejected':
         return <Badge variant="destructive">Rejected</Badge>;
       default:
@@ -172,8 +191,23 @@ export default function FacultyManagementPage() {
       conference: 'bg-green-100 text-green-800',
       emergency: 'bg-orange-100 text-orange-800',
     };
-    return <Badge className={colors[type] || ''}>{type}</Badge>;
+    return <Badge className={`capitalize ${colors[type?.toLowerCase()] || ''}`}>{type}</Badge>;
   };
+
+  // Stats calculation
+  const pendingCount = leaveRequests.filter(r => r.status === 'pending').length;
+  
+  // Calculate today's leave (simplified check)
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const onLeaveToday = leaveRequests.filter(r => {
+    if (r.status !== 'approved') return false;
+    const start = new Date(r.startDate);
+    const end = new Date(r.endDate);
+    start.setHours(0,0,0,0);
+    end.setHours(23,59,59,999);
+    return today >= start && today <= end;
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -201,9 +235,7 @@ export default function FacultyManagementPage() {
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {leaveRequests.filter(r => r.status === 'pending').length}
-            </div>
+            <div className="text-2xl font-bold">{pendingCount}</div>
             <p className="text-xs text-muted-foreground">Require your approval</p>
           </CardContent>
         </Card>
@@ -213,7 +245,7 @@ export default function FacultyManagementPage() {
             <User className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2</div>
+            <div className="text-2xl font-bold">{onLeaveToday}</div>
             <p className="text-xs text-muted-foreground">Faculty members</p>
           </CardContent>
         </Card>
@@ -238,7 +270,11 @@ export default function FacultyManagementPage() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : leaveRequests.length === 0 ? (
+            <div className="text-center p-8 text-muted-foreground">
+              No leave requests found.
             </div>
           ) : (
             <Table>
@@ -257,20 +293,22 @@ export default function FacultyManagementPage() {
                 {leaveRequests.map((request) => (
                   <TableRow key={request._id}>
                     <TableCell>
-                      <div className="font-medium">{request.facultyId.name}</div>
-                      <div className="text-xs text-muted-foreground">{request.facultyId.email}</div>
+                      <div className="font-medium">{request.facultyId?.name || 'Unknown'}</div>
+                      <div className="text-xs text-muted-foreground">{request.facultyId?.email || ''}</div>
                     </TableCell>
                     <TableCell>{getTypeBadge(request.type)}</TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {format(new Date(request.startDate), 'MMM dd')} - {format(new Date(request.endDate), 'MMM dd')}
+                        {request.startDate && format(new Date(request.startDate), 'MMM dd')} - {request.endDate && format(new Date(request.endDate), 'MMM dd')}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {Math.ceil((new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1} days
+                        {request.startDate && request.endDate ? 
+                          Math.ceil((new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1
+                          : 0} days
                       </div>
                     </TableCell>
                     <TableCell className="max-w-[200px]">
-                      <div className="truncate text-sm">{request.reason}</div>
+                      <div className="truncate text-sm" title={request.reason}>{request.reason}</div>
                     </TableCell>
                     <TableCell>
                       {request.substituteTeacherId ? (
@@ -287,6 +325,7 @@ export default function FacultyManagementPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleApprove(request)}
+                            disabled={processingId === request._id}
                           >
                             <Check className="h-4 w-4 text-green-500" />
                           </Button>
@@ -294,8 +333,9 @@ export default function FacultyManagementPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleReject(request._id)}
+                            disabled={processingId === request._id}
                           >
-                            <X className="h-4 w-4 text-red-500" />
+                            {processingId === request._id ? <Loader2 className="h-4 w-4 animate-spin text-red-500" /> : <X className="h-4 w-4 text-red-500" />}
                           </Button>
                         </div>
                       )}
@@ -314,14 +354,14 @@ export default function FacultyManagementPage() {
           <DialogHeader>
             <DialogTitle>Approve Leave Request</DialogTitle>
             <DialogDescription>
-              Assign a substitute teacher for {selectedRequest?.facultyId.name}
+              Assign a substitute teacher for {selectedRequest?.facultyId?.name}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
               <h4 className="font-medium mb-2">Leave Details</h4>
               <div className="text-sm space-y-1 text-muted-foreground">
-                <p>Duration: {selectedRequest && format(new Date(selectedRequest.startDate), 'PPP')} - {selectedRequest && format(new Date(selectedRequest.endDate), 'PPP')}</p>
+                <p>Duration: {selectedRequest?.startDate && format(new Date(selectedRequest.startDate), 'PPP')} - {selectedRequest?.endDate && format(new Date(selectedRequest.endDate), 'PPP')}</p>
                 <p>Reason: {selectedRequest?.reason}</p>
               </div>
             </div>
@@ -333,21 +373,20 @@ export default function FacultyManagementPage() {
                   <SelectValue placeholder="Select available faculty" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableFaculty.map((faculty) => (
+                  {availableFaculty.length > 0 ? availableFaculty.map((faculty) => (
                     <SelectItem key={faculty._id} value={faculty._id}>
                       <div>
                         <div>{faculty.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {faculty.expertiseTags?.join(', ')}
+                          {faculty.department || faculty.email}
                         </div>
                       </div>
                     </SelectItem>
-                  ))}
+                  )) : (
+                    <SelectItem value="none" disabled>No faculty available</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                System will auto-assign based on expertise tags and availability
-              </p>
             </div>
 
             <div className="space-y-2">
@@ -361,10 +400,11 @@ export default function FacultyManagementPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowApprovalDialog(false)}>
+            <Button variant="outline" onClick={() => setShowApprovalDialog(false)} disabled={processingId !== null}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitApproval}>
+            <Button onClick={handleSubmitApproval} disabled={processingId !== null}>
+              {processingId !== null && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Approve & Assign
             </Button>
           </DialogFooter>
@@ -373,3 +413,4 @@ export default function FacultyManagementPage() {
     </div>
   );
 }
+

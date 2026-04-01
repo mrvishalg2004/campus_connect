@@ -22,7 +22,7 @@ export async function POST(
   try {
     await dbConnect();
 
-    const token = req.cookies.get('token')?.value;
+    const token = req.cookies.get('auth-token')?.value;
     if (!token) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
@@ -104,7 +104,7 @@ export async function PUT(
   try {
     await dbConnect();
 
-    const token = req.cookies.get('token')?.value;
+    const token = req.cookies.get('auth-token')?.value;
     if (!token) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },

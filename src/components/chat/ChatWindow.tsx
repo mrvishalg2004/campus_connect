@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Paperclip, CornerDownLeft, ThumbsUp, User, Shield, MessageSquare } from 'lucide-react';
 import type { ChatMessage, User as UserType } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -61,44 +61,88 @@ export default function ChatWindow({
   roomName,
   messages,
   currentUser,
+  onSendMessage,
 }: {
   roomName: string;
   messages: ChatMessage[];
   currentUser: UserType;
+  onSendMessage?: (text: string, isAnonymous: boolean) => Promise<void>;
 }) {
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!messageText.trim() || isSending || !onSendMessage) return;
+    
+    setIsSending(true);
+    try {
+      await onSendMessage(messageText, isAnonymous);
+      setMessageText('');
+    } catch (error) {
+      console.error('Failed to send message', error);
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
-    <Card className="flex flex-1 flex-col">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><MessageSquare /> {roomName}</CardTitle>
+    <Card className="flex flex-1 flex-col h-full overflow-hidden">
+      <CardHeader className="py-3 px-4 shadow-sm z-10">
+        <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5"/> {roomName}</CardTitle>
       </CardHeader>
-      <Separator/>
-      <CardContent className="flex-1 p-0">
-        <ScrollArea className="h-[calc(100vh-22rem)] p-6">
-          <div className="space-y-6">
-            {messages.map(msg => (
+      
+      <CardContent className="flex-1 p-0 overflow-hidden relative">
+        <ScrollArea className="h-full absolute inset-0 p-4" viewportRef={scrollRef}>
+          <div className="space-y-6 pb-4">
+            {messages.length === 0 ? (
+              <div className="flex h-full items-center justify-center p-8 text-muted-foreground text-sm">
+                No messages yet. Be the first to start the conversation!
+              </div>
+            ) : (
+              messages.map(msg => (
                 <Message key={msg.id} msg={msg} currentUser={currentUser} />
-            ))}
+              ))
+            )}
           </div>
         </ScrollArea>
       </CardContent>
-      <CardFooter className="flex-col items-start gap-4 border-t bg-background p-4">
-        <form className="relative w-full">
-          <Input placeholder="Type your message..." />
-          <Button size="icon" variant="ghost" className="absolute right-1 top-1/2 -translate-y-1/2">
-            <Paperclip className="h-5 w-5" />
-          </Button>
-        </form>
-        <div className="flex w-full items-center justify-between">
-            <div className="flex items-center space-x-2">
-                <Switch id="anonymous-mode" checked={isAnonymous} onCheckedChange={setIsAnonymous} />
-                <Label htmlFor="anonymous-mode">Post Anonymously</Label>
-            </div>
-            <Button size="sm">
-                Send <CornerDownLeft className="ml-2 h-4 w-4" />
+      
+      <CardFooter className="flex-col items-start gap-4 border-t bg-muted/20 p-4">
+        <form onSubmit={handleSubmit} className="w-full flex flex-col gap-3">
+          <div className="relative w-full">
+            <Input 
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              placeholder="Type your message..." 
+              autoComplete="off"
+              disabled={isSending}
+              className="pr-10"
+            />
+            <Button type="button" size="icon" variant="ghost" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Paperclip className="h-4 w-4" />
             </Button>
-        </div>
+          </div>
+          
+          <div className="flex w-full items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Switch id="anonymous-mode" checked={isAnonymous} onCheckedChange={setIsAnonymous} disabled={isSending} />
+              <Label htmlFor="anonymous-mode" className="text-xs cursor-pointer">Post Anonymously</Label>
+            </div>
+            <Button type="submit" size="sm" disabled={!messageText.trim() || isSending}>
+              {isSending ? 'Sending...' : 'Send'} <CornerDownLeft className="ml-2 h-3 w-3" />
+            </Button>
+          </div>
+        </form>
       </CardFooter>
     </Card>
   );

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Search, TrendingUp, TrendingDown, Download, AlertTriangle, CheckCircle } from "lucide-react";
 import { Line, LineChart, Bar, BarChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { useToast } from '@/hooks/use-toast';
 
 interface Student {
   _id: string;
@@ -42,6 +43,7 @@ interface StudentProgress {
 }
 
 export default function StudentProgressPage() {
+  const { toast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<StudentProgress | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,43 +69,135 @@ export default function StudentProgressPage() {
     }
   };
 
-  const fetchStudentProgress = async (studentId: string) => {
-    // Mock data for now - in production, fetch from API
-    const mockProgress: StudentProgress = {
-      student: students.find(s => s._id === studentId)!,
+  const buildStudentProgress = async (studentId: string): Promise<StudentProgress> => {
+    const student = students.find(s => s._id === studentId);
+    if (!student) {
+      throw new Error('Student not found');
+    }
+
+    const [attendanceRes, marksRes, doubtsRes] = await Promise.all([
+      fetch(`/api/attendance?userId=${studentId}`),
+      fetch(`/api/marks?studentId=${studentId}`),
+      fetch(`/api/doubts?studentId=${studentId}`),
+    ]);
+
+    const [attendanceData, marksData, doubtsData] = await Promise.all([
+      attendanceRes.json(),
+      marksRes.json(),
+      doubtsRes.json(),
+    ]);
+
+    const attendanceRecords = attendanceData.success ? (attendanceData.data || []) : [];
+    const marksRecords = marksData.success ? (marksData.data || []) : [];
+    const doubtsRecords = doubtsData.success ? (doubtsData.data || []) : [];
+
+    const monthStats = new Map<string, { total: number; present: number }>();
+    for (let i = 5; i >= 0; i -= 1) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const key = date.toLocaleString('en-US', { month: 'short' });
+      monthStats.set(key, { total: 0, present: 0 });
+    }
+
+    attendanceRecords.forEach((record: any) => {
+      const key = new Date(record.date).toLocaleString('en-US', { month: 'short' });
+      if (!monthStats.has(key)) {
+        monthStats.set(key, { total: 0, present: 0 });
+      }
+
+      const current = monthStats.get(key)!;
+      current.total += 1;
+      if (record.status === 'present' || record.status === 'late') {
+        current.present += 1;
+      }
+    });
+
+    const attendanceSeries = Array.from(monthStats.entries()).map(([month, value]) => ({
+      month,
+      value: value.total ? (value.present / value.total) * 100 : 0,
+    }));
+
+    const attendanceAverage = attendanceSeries.length
+      ? attendanceSeries.reduce((sum, point) => sum + point.value, 0) / attendanceSeries.length
+      : 0;
+
+    const attendanceTrend: 'up' | 'down' | 'stable' =
+      attendanceSeries.length >= 2
+        ? attendanceSeries[attendanceSeries.length - 1].value > attendanceSeries[0].value
+          ? 'up'
+          : attendanceSeries[attendanceSeries.length - 1].value < attendanceSeries[0].value
+            ? 'down'
+            : 'stable'
+        : 'stable';
+
+    const marksBySubject = new Map<string, { scoreSum: number; totalSum: number }>();
+    marksRecords.forEach((mark: any) => {
+      if (!marksBySubject.has(mark.subject)) {
+        marksBySubject.set(mark.subject, { scoreSum: 0, totalSum: 0 });
+      }
+      const bucket = marksBySubject.get(mark.subject)!;
+      bucket.scoreSum += Number(mark.score || 0);
+      bucket.totalSum += Number(mark.total || 0);
+    });
+
+    const marksSeries = Array.from(marksBySubject.entries()).map(([subject, totals]) => ({
+      subject,
+      score: totals.totalSum > 0 ? (totals.scoreSum / totals.totalSum) * 100 : 0,
+      total: 100,
+    }));
+
+    const marksAverage = marksSeries.length
+      ? marksSeries.reduce((sum, row) => sum + row.score, 0) / marksSeries.length
+      : 0;
+
+    const marksTrend: 'up' | 'down' | 'stable' =
+      marksRecords.length >= 2
+        ? (marksRecords[0].score / Math.max(1, marksRecords[0].total)) * 100 >
+          (marksRecords[marksRecords.length - 1].score / Math.max(1, marksRecords[marksRecords.length - 1].total)) * 100
+          ? 'up'
+          : 'down'
+        : 'stable';
+
+    const alerts: string[] = [];
+    if (attendanceAverage < 75) {
+      alerts.push('Attendance below 75% threshold');
+    }
+    if (marksAverage < 60) {
+      alerts.push('Overall marks below 60% - intervention recommended');
+    }
+
+    return {
+      student,
       attendance: {
-        average: 87.5,
-        trend: 'up',
-        data: [
-          { month: 'Jan', value: 85 },
-          { month: 'Feb', value: 82 },
-          { month: 'Mar', value: 88 },
-          { month: 'Apr', value: 90 },
-          { month: 'May', value: 87 },
-          { month: 'Jun', value: 89 },
-        ],
+        average: Number(attendanceAverage.toFixed(1)),
+        trend: attendanceTrend,
+        data: attendanceSeries,
       },
       marks: {
-        average: 78.5,
-        trend: 'down',
-        data: [
-          { subject: 'Physics', score: 85, total: 100 },
-          { subject: 'Mathematics', score: 78, total: 100 },
-          { subject: 'Chemistry', score: 72, total: 100 },
-          { subject: 'English', score: 80, total: 100 },
-        ],
+        average: Number(marksAverage.toFixed(1)),
+        trend: marksTrend,
+        data: marksSeries,
       },
       chatParticipation: {
-        doubtsPosted: 12,
-        answersGiven: 8,
-        helpful: 15,
+        doubtsPosted: doubtsRecords.length,
+        answersGiven: doubtsRecords.reduce((sum: number, doubt: any) => sum + (doubt.answers?.length || 0), 0),
+        helpful: doubtsRecords.reduce((sum: number, doubt: any) => sum + (doubt.upvotes || 0), 0),
       },
-      alerts: [
-        'Attendance below 90% threshold',
-        'Chemistry marks need improvement',
-      ],
+      alerts,
     };
-    setSelectedStudent(mockProgress);
+  };
+
+  const fetchStudentProgress = async (studentId: string) => {
+    try {
+      const progress = await buildStudentProgress(studentId);
+      setSelectedStudent(progress);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to fetch student progress',
+        variant: 'destructive',
+      });
+    }
   };
 
   const filteredStudents = students.filter(student =>
@@ -112,9 +206,70 @@ export default function StudentProgressPage() {
     (student.rollNumber && student.rollNumber.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const exportStudentPDF = (studentId: string) => {
-    // Implementation for PDF export
-    console.log('Exporting PDF for student:', studentId);
+  const exportStudentPDF = async (studentId: string) => {
+    try {
+      const progress =
+        selectedStudent && selectedStudent.student._id === studentId
+          ? selectedStudent
+          : await buildStudentProgress(studentId);
+
+      const { jsPDF } = await import('jspdf');
+      const pdf = new jsPDF();
+
+      let cursorY = 20;
+      const lineHeight = 8;
+
+      pdf.setFontSize(16);
+      pdf.text('CampusConnect - Student Progress Report', 14, cursorY);
+      cursorY += lineHeight * 2;
+
+      pdf.setFontSize(12);
+      pdf.text(`Student: ${progress.student.name}`, 14, cursorY);
+      cursorY += lineHeight;
+      pdf.text(`Email: ${progress.student.email}`, 14, cursorY);
+      cursorY += lineHeight;
+      pdf.text(`Department: ${progress.student.department || 'N/A'}`, 14, cursorY);
+      cursorY += lineHeight * 2;
+
+      pdf.text(`Average Attendance: ${progress.attendance.average.toFixed(1)}%`, 14, cursorY);
+      cursorY += lineHeight;
+      pdf.text(`Average Marks: ${progress.marks.average.toFixed(1)}%`, 14, cursorY);
+      cursorY += lineHeight;
+      pdf.text(`Doubts Posted: ${progress.chatParticipation.doubtsPosted}`, 14, cursorY);
+      cursorY += lineHeight;
+      pdf.text(`Answers Given: ${progress.chatParticipation.answersGiven}`, 14, cursorY);
+      cursorY += lineHeight * 2;
+
+      pdf.setFontSize(13);
+      pdf.text('Subject-wise Marks:', 14, cursorY);
+      cursorY += lineHeight;
+      pdf.setFontSize(11);
+
+      progress.marks.data.forEach((subject) => {
+        pdf.text(`- ${subject.subject}: ${subject.score.toFixed(1)}%`, 16, cursorY);
+        cursorY += lineHeight;
+      });
+
+      if (progress.alerts.length > 0) {
+        cursorY += lineHeight;
+        pdf.setFontSize(13);
+        pdf.text('Alerts:', 14, cursorY);
+        cursorY += lineHeight;
+        pdf.setFontSize(11);
+        progress.alerts.forEach((alert) => {
+          pdf.text(`- ${alert}`, 16, cursorY);
+          cursorY += lineHeight;
+        });
+      }
+
+      pdf.save(`student-progress-${progress.student.name.replace(/\s+/g, '-').toLowerCase()}.pdf`);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to generate progress PDF',
+        variant: 'destructive',
+      });
+    }
   };
 
   const getInitials = (name: string) => {

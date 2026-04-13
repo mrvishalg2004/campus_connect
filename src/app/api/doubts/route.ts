@@ -3,14 +3,20 @@ import dbConnect from '@/lib/mongodb';
 import Doubt from '@/models/Doubt';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
+import { getAuthUser, unauthorizedResponse } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
 
 // GET - Fetch doubts
 export async function GET(request: NextRequest) {
   try {
     await dbConnect();
     console.log('=== Doubts GET: Starting ===');
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
 
     const { searchParams } = new URL(request.url);
     const studentId = searchParams.get('studentId');
@@ -19,6 +25,9 @@ export async function GET(request: NextRequest) {
     let query: any = {};
 
     if (studentId) {
+      if (authUser.role === 'student' && studentId !== authUser.userId) {
+        return unauthorizedResponse('Forbidden', 403);
+      }
       query.studentId = studentId;
     }
     if (isResolved !== null && isResolved !== undefined) {
@@ -90,6 +99,11 @@ export async function PUT(request: NextRequest) {
   try {
     await dbConnect();
 
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
     const body = await request.json();
     const { id, action, ...data } = body;
 
@@ -121,11 +135,15 @@ export async function PUT(request: NextRequest) {
         break;
 
       case 'resolve':
+        if (!['teacher', 'hod', 'principal'].includes(authUser.role)) {
+          return unauthorizedResponse('Only faculty can resolve doubts', 403);
+        }
+
         doubt = await Doubt.findByIdAndUpdate(
           id,
           { 
             isResolved: true,
-            resolvedBy: data.resolvedBy
+            resolvedBy: authUser.userId
           },
           { new: true }
         );

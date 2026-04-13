@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
 import { Check, X, Calendar as CalendarIcon, User, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -58,7 +57,7 @@ export default function FacultyManagementPage() {
       const res = await fetch('/api/leaves');
       if (!res.ok) throw new Error('Failed to fetch leave requests');
       const data = await res.json();
-      setLeaveRequests(data);
+      setLeaveRequests(data.data || []);
     } catch (error) {
       console.error(error);
       toast({
@@ -77,7 +76,7 @@ export default function FacultyManagementPage() {
       const res = await fetch('/api/users?role=teacher');
       if (res.ok) {
         const data = await res.json();
-        setAvailableFaculty(data);
+        setAvailableFaculty(data.data || []);
       }
     } catch (error) {
       console.error('Failed to fetch faculty:', error);
@@ -97,7 +96,7 @@ export default function FacultyManagementPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'rejected',
-          reviewedBy: user?._id || user?.id,
+          reviewedBy: user?.id,
           reviewedAt: new Date(),
         }),
       });
@@ -143,7 +142,7 @@ export default function FacultyManagementPage() {
           status: 'approved',
           substituteTeacherId: substituteTeacher,
           comments,
-          reviewedBy: user?._id || user?.id,
+          reviewedBy: user?.id,
           reviewedAt: new Date(),
         }),
       });

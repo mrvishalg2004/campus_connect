@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Assignment from '@/models/Assignment';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+import Notification from '@/models/Notification';
+import User from '@/models/User';
+import { getAuthUser, hasRole, unauthorizedResponse } from '@/lib/auth';
 
 // GET /api/assignments - List assignments (for both teacher and student)
 export async function GET(req: NextRequest) {
@@ -12,30 +11,39 @@ export async function GET(req: NextRequest) {
     await dbConnect();
     console.log('=== Assignments GET: Starting ===');
 
-    const cookieStore = cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
-    console.log('=== Assignments GET: User ===', { role: decoded.role });
+    console.log('=== Assignments GET: User ===', { role: authUser.role });
 
     let assignments;
     
-    if (decoded.role === 'teacher') {
+    if (authUser.role === 'teacher') {
       // Teachers see only their own assignments
-      assignments = await Assignment.find({ teacherId: decoded.userId })
+      assignments = await Assignment.find({ teacherId: authUser.userId })
         .populate('teacherId', 'name email')
+        .populate('submissions.studentId', 'name email')
         .sort({ createdAt: -1 });
-    } else if (decoded.role === 'student') {
+    } else if (authUser.role === 'student') {
       // Students see all published assignments
       assignments = await Assignment.find({ published: true })
         .populate('teacherId', 'name email')
+        .sort({ createdAt: -1 });
+
+      assignments = assignments.map((assignment: any) => {
+        const plain = assignment.toObject();
+        plain.submissions = (plain.submissions || []).filter(
+          (submission: any) =>
+            (submission.studentId?._id?.toString?.() || submission.studentId?.toString?.()) === authUser.userId
+        );
+        return plain;
+      });
+    } else if (hasRole(authUser, ['hod', 'principal'])) {
+      assignments = await Assignment.find({})
+        .populate('teacherId', 'name email')
+        .populate('submissions.studentId', 'name email')
         .sort({ createdAt: -1 });
     } else {
       return NextResponse.json(
@@ -65,19 +73,12 @@ export async function POST(req: NextRequest) {
     await dbConnect();
     console.log('=== Assignments POST: Starting ===');
 
-    const cookieStore = cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
-    
-    if (decoded.role !== 'teacher') {
+    if (authUser.role !== 'teacher') {
       return NextResponse.json(
         { success: false, error: 'Only teachers can create assignments' },
         { status: 403 }
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
     }
 
     const assignment = await Assignment.create({
-      teacherId: decoded.userId,
+      teacherId: authUser.userId,
       title,
       description: description || '',
       subject,
@@ -111,6 +112,21 @@ export async function POST(req: NextRequest) {
     });
 
     console.log('=== Assignments POST: Created ===', assignment._id);
+
+    const students = await User.find({ role: 'student' }).select('_id');
+    if (students.length > 0) {
+      await Notification.insertMany(
+        students.map((student) => ({
+          userId: student._id,
+          text: `New assignment posted: ${title}. Due ${new Date(dueDate).toLocaleDateString()}.`,
+          type: 'info',
+          category: 'general',
+          link: '/student/assignments',
+          read: false,
+          timestamp: new Date(),
+        }))
+      );
+    }
 
     return NextResponse.json({
       success: true,

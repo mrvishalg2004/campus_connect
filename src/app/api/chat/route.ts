@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import ChatMessage from '@/models/ChatMessage';
+import { getAuthUser, unauthorizedResponse } from '@/lib/auth';
 
 // GET - Fetch chat messages
 export async function GET(request: NextRequest) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
 
     const { searchParams } = new URL(request.url);
     const roomId = searchParams.get('roomId');
@@ -32,8 +38,16 @@ export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
     const body = await request.json();
-    const message = await ChatMessage.create(body);
+    const message = await ChatMessage.create({
+      ...body,
+      authorId: authUser.userId,
+    });
 
     const populatedMessage = await ChatMessage.findById((message as any)._id)
       .populate('authorId', 'name email role avatarUrl');
@@ -48,6 +62,11 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
 
     const body = await request.json();
     const { id, action, ...data } = body;
@@ -100,6 +119,11 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

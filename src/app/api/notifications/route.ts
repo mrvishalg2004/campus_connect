@@ -1,32 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Notification from '@/models/Notification';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+import { getAuthUser, hasRole, unauthorizedResponse } from '@/lib/auth';
 
 // GET - Fetch notifications
 export async function GET(request: NextRequest) {
   try {
     await dbConnect();
 
-    // Get authenticated user from token
-    const cookieStore = cookies();
-    const token = cookieStore.get('auth-token')?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
-
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
 
     const { searchParams } = new URL(request.url);
     const unreadOnly = searchParams.get('unreadOnly');
     const limit = parseInt(searchParams.get('limit') || '50');
 
     let query: any = {
-      userId: decoded.userId, // Always filter by authenticated user
+      userId: authUser.userId, // Always filter by authenticated user
     };
 
     if (unreadOnly === 'true') {
@@ -58,6 +50,15 @@ export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
+    if (!hasRole(authUser, ['teacher', 'hod', 'principal'])) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
+
     const body = await request.json();
     const notification = await Notification.create(body);
 
@@ -71,6 +72,11 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
 
     const body = await request.json();
     const { id, ...updateData } = body;
@@ -88,6 +94,13 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
     }
 
+    if (
+      notification.userId.toString() !== authUser.userId &&
+      !hasRole(authUser, ['teacher', 'hod', 'principal'])
+    ) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
+
     return NextResponse.json({ success: true, data: notification });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -99,6 +112,11 @@ export async function DELETE(request: NextRequest) {
   try {
     await dbConnect();
 
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -106,11 +124,20 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Notification ID is required' }, { status: 400 });
     }
 
-    const notification = await Notification.findByIdAndDelete(id);
+    const notification = await Notification.findById(id);
 
     if (!notification) {
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
     }
+
+    if (
+      notification.userId.toString() !== authUser.userId &&
+      !hasRole(authUser, ['teacher', 'hod', 'principal'])
+    ) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
+
+    await Notification.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {

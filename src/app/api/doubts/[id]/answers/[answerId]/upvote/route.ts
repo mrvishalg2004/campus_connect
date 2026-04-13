@@ -4,7 +4,7 @@ import Doubt from '@/models/Doubt';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
 
 // POST - Upvote answer
 export async function POST(

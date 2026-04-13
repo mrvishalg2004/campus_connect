@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Assignment from '@/models/Assignment';
-import jwt from 'jsonwebtoken';
+import { getAuthUser, hasRole, unauthorizedResponse } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-const verifyToken = (token: string) => {
-  try {
-    return jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
-  }
-};
+function getTeacherId(assignment: any): string {
+  return (
+    assignment?.teacherId?._id?.toString?.() ||
+    assignment?.teacherId?.toString?.() ||
+    ''
+  );
+}
 
 // GET /api/assignments/[id] - Get single assignment
 export async function GET(
@@ -21,20 +19,9 @@ export async function GET(
   try {
     await dbConnect();
 
-    const token = req.cookies.get('token')?.value;
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const decoded = verifyToken(token);
-    if (!decoded) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
     const assignment = await Assignment.findById(params.id)
@@ -46,6 +33,32 @@ export async function GET(
         { success: false, error: 'Assignment not found' },
         { status: 404 }
       );
+    }
+
+    const assignmentTeacherId = getTeacherId(assignment);
+
+    if (authUser.role === 'teacher' && assignmentTeacherId !== authUser.userId) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
+
+    if (authUser.role === 'student') {
+      if (!assignment.published) {
+        return unauthorizedResponse('Assignment is not published', 403);
+      }
+
+      const plain = assignment.toObject() as any;
+      plain.submissions = (plain.submissions || []).filter(
+        (submission: any) => submission.studentId?._id?.toString() === authUser.userId
+      );
+
+      return NextResponse.json({
+        success: true,
+        data: plain,
+      });
+    }
+
+    if (!hasRole(authUser, ['teacher', 'hod', 'principal'])) {
+      return unauthorizedResponse('Forbidden', 403);
     }
 
     return NextResponse.json({
@@ -69,20 +82,13 @@ export async function PUT(
   try {
     await dbConnect();
 
-    const token = req.cookies.get('token')?.value;
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = verifyToken(token);
-    if (!decoded || decoded.role !== 'teacher') {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (authUser.role !== 'teacher') {
+      return unauthorizedResponse('Only teachers can update assignments', 403);
     }
 
     const body = await req.json();
@@ -96,7 +102,7 @@ export async function PUT(
     }
 
     // Check if teacher owns this assignment
-    if (assignment.teacherId.toString() !== decoded.userId) {
+    if (assignment.teacherId.toString() !== authUser.userId) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 }
@@ -143,20 +149,13 @@ export async function DELETE(
   try {
     await dbConnect();
 
-    const token = req.cookies.get('token')?.value;
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = verifyToken(token);
-    if (!decoded || decoded.role !== 'teacher') {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (authUser.role !== 'teacher') {
+      return unauthorizedResponse('Only teachers can delete assignments', 403);
     }
 
     const assignment = await Assignment.findById(params.id);
@@ -169,7 +168,7 @@ export async function DELETE(
     }
 
     // Check if teacher owns this assignment
-    if (assignment.teacherId.toString() !== decoded.userId) {
+    if (assignment.teacherId.toString() !== authUser.userId) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 }

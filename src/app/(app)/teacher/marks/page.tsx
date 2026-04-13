@@ -114,11 +114,23 @@ export default function MarksPage() {
         })
       );
 
-      await Promise.all(promises);
+      const responses = await Promise.all(promises);
+
+      for (const response of responses) {
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || 'Failed to save marks');
+        }
+      }
+
+      const interventionCount = marksData.filter(mark => (mark.score / totalMarks) * 100 < 60).length;
 
       toast({
         title: "Success",
-        description: `Marks saved successfully. Class average: ${calculateAverage()}%`,
+        description:
+          interventionCount > 0
+            ? `Marks saved successfully. ${interventionCount} low-score intervention notification(s) sent.`
+            : `Marks saved successfully. Class average: ${calculateAverage()}%`,
       });
 
       // Show analytics
@@ -126,11 +138,54 @@ export default function MarksPage() {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to save marks",
+        description: error instanceof Error ? error.message : "Failed to save marks",
         variant: "destructive",
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendInterventionTips = async () => {
+    const userIds = belowAverageStudents.map(student => student._id);
+
+    if (userIds.length === 0) {
+      toast({
+        title: 'No Students Selected',
+        description: 'No below-average students to notify.',
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/notifications/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds,
+          text: `Intervention tip from your teacher for ${subject || 'this assessment'}: revise weak topics and practice previous questions.`,
+          type: 'warning',
+          category: 'general',
+          link: '/student/marks',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send intervention tips');
+      }
+
+      toast({
+        title: 'Notifications Sent',
+        description: 'Intervention suggestions sent to selected students.',
+      });
+      setShowAnalytics(false);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to send intervention tips',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -337,11 +392,7 @@ export default function MarksPage() {
                 Close
               </Button>
               <Button onClick={() => {
-                toast({
-                  title: "Notifications Sent",
-                  description: "Intervention suggestions sent to underperforming students",
-                });
-                setShowAnalytics(false);
+                sendInterventionTips();
               }}>
                 Send Intervention Tips
               </Button>

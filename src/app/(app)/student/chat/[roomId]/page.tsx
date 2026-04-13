@@ -29,6 +29,7 @@ export default function ChatRoomPage({ params }: { params: { roomId: string } })
         const formattedMessages = data.map((msg: any) => ({
           id: msg._id,
           text: msg.text,
+          attachments: msg.attachments || [],
           timestamp: msg.timestamp,
           upvotes: msg.upvotes || 0,
           author: {
@@ -61,17 +62,22 @@ export default function ChatRoomPage({ params }: { params: { roomId: string } })
     }
   }, [user, params.roomId]);
 
-  const handleSendMessage = async (text: string, isAnonymous: boolean) => {
+  const handleSendMessage = async (
+    text: string,
+    isAnonymous: boolean,
+    attachments: { name: string; url: string; type: 'image' | 'pdf' | 'document' }[] = []
+  ) => {
     if (!user) return;
     
     // Optimistic update
     const optimisticMsg = {
       id: `temp-${Date.now()}`,
       text,
+      attachments,
       timestamp: new Date().toISOString(),
       upvotes: 0,
       author: {
-        id: user._id || user.id,
+        id: user.id,
         name: isAnonymous ? 'Anonymous' : user.name,
         role: user.role,
         avatarUrl: isAnonymous ? 'https://picsum.photos/seed/anon/100/100' : (user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`),
@@ -89,7 +95,7 @@ export default function ChatRoomPage({ params }: { params: { roomId: string } })
         body: JSON.stringify({
           text,
           isAnonymous,
-          authorId: user._id || user.id
+          attachments,
         })
       });
       
@@ -118,7 +124,7 @@ export default function ChatRoomPage({ params }: { params: { roomId: string } })
   }
 
   const currentUser = {
-    id: user.id || (user as any)._id || 'unknown',
+    id: user.id || 'unknown',
     name: user.name,
     email: user.email || 'student@example.com',
     role: user.role,

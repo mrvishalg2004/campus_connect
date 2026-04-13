@@ -78,6 +78,9 @@ export default function AppHeader({ user }: { user: User }) {
       .join('');
   };
 
+  const profileRoute = user.role === 'student' ? '/student/profile' : `/${user.role}`;
+  const settingsRoute = user.role === 'student' ? '/student/profile' : `/${user.role}/notifications`;
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-card px-4 md:px-6">
       <nav className="hidden flex-col gap-6 text-lg font-medium md:flex md:flex-row md:items-center md:gap-5 md:text-sm lg:gap-6">
@@ -137,15 +140,15 @@ export default function AppHeader({ user }: { user: User }) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(profileRoute)}>
                 <UserIcon className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(settingsRoute)}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Settings</span>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/')}>
                 <LifeBuoy className="mr-2 h-4 w-4" />
                 <span>Support</span>
               </DropdownMenuItem>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { Camera, Save, Lock, User as UserIcon, Mail, Phone, MapPin } from "lucide-react";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [profileData, setProfileData] = useState({
     name: '',
     email: '',
@@ -59,6 +61,7 @@ export default function ProfilePage() {
       const data = await response.json();
 
       if (data.success) {
+        await refreshUser();
         toast({
           title: "Profile Updated",
           description: "Your profile has been updated successfully.",
@@ -74,6 +77,50 @@ export default function ProfilePage() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingPhoto(true);
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', 'avatars');
+
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const uploadData = await uploadResponse.json();
+      if (!uploadResponse.ok || !uploadData.success) {
+        throw new Error(uploadData.error || 'Photo upload failed');
+      }
+
+      setProfileData((prev) => ({
+        ...prev,
+        avatarUrl: uploadData.data.url,
+      }));
+
+      toast({
+        title: 'Photo Uploaded',
+        description: 'Your new profile photo is ready. Click Save Changes to persist it.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Upload Failed',
+        description: error.message || 'Failed to upload photo',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingPhoto(false);
+      if (event.target) {
+        event.target.value = '';
+      }
     }
   };
 
@@ -175,9 +222,21 @@ export default function ProfilePage() {
                 </AvatarFallback>
               </Avatar>
               <div className="space-y-2">
-                <Button variant="outline" size="sm">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePhotoUpload}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                >
                   <Camera className="h-4 w-4 mr-2" />
-                  Upload Photo
+                  {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
                 </Button>
                 <p className="text-xs text-muted-foreground">
                   JPG, PNG or GIF. Max size 2MB.

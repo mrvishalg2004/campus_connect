@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
 
 // POST - Change password
 export async function POST(request: NextRequest) {
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.userId).select('+password');
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });

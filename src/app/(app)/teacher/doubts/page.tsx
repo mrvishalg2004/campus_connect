@@ -109,7 +109,7 @@ const DoubtItem = ({ doubt, onAnswerPosted, onResolve }: {
       const response = await fetch(`/api/doubts/${doubt._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resolve' }),
+        body: JSON.stringify({ status: 'resolved' }),
       });
 
       const data = await response.json();

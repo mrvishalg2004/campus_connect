@@ -69,6 +69,10 @@ export async function POST(request: NextRequest) {
       email: user.email,
       role: user.role,
       avatarUrl: user.avatarUrl,
+      phone: user.phone,
+      rollNumber: user.rollNumber,
+      semester: user.semester,
+      address: user.address,
       department: user.department,
     };
 

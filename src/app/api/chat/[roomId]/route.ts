@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import ChatMessage from '@/models/ChatMessage';
 import User from '@/models/User';
+import { getAuthUser, unauthorizedResponse } from '@/lib/auth';
 
 // GET - Fetch all messages for a specific room
 export async function GET(
@@ -10,6 +11,11 @@ export async function GET(
 ) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
     
     // Ensure User model is registered
     if (!User) console.log("User model not found");
@@ -38,22 +44,39 @@ export async function POST(
 ) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
     const { roomId } = params;
     const body = await request.json();
     
-    const { text, isAnonymous, authorId } = body;
+    const { text, isAnonymous, attachments } = body;
+    const normalizedText = (text || '').trim();
+    const normalizedAttachments = Array.isArray(attachments)
+      ? attachments
+          .filter((item) => item?.url)
+          .map((item) => ({
+            name: item.name || 'attachment',
+            url: item.url,
+            type: item.type || 'document',
+          }))
+      : [];
     
-    if (!text || !authorId) {
+    if (!normalizedText && normalizedAttachments.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Message text or attachment is required' },
         { status: 400 }
       );
     }
     
     const newMessage = await ChatMessage.create({
       roomId,
-      authorId,
-      text,
+      authorId: authUser.userId,
+      text: normalizedText || 'Attachment',
+      attachments: normalizedAttachments,
       isAnonymous: !!isAnonymous,
       timestamp: new Date(),
     });

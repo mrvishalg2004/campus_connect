@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,38 +19,76 @@ import Link from "next/link";
 import { Bar, BarChart, Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import StudentsList from "@/components/dashboard/StudentsList";
+import { useToast } from '@/hooks/use-toast';
 
-const kpiData = {
-  totalStudents: 2450,
-  totalFaculty: 145,
-  overallAttendance: 87.5,
-  overallPassRate: 89.2,
-  facultyUtilization: 92.3,
+type StatsPayload = {
+  counts: {
+    students: number;
+    faculty: number;
+  };
+  averages: {
+    attendance: number;
+    passRate: number;
+    facultyUtilization: number;
+  };
+  departments: Array<{
+    department: string;
+    attendanceAvg: number;
+    marksAvg: number;
+    risk: 'low' | 'medium' | 'high';
+  }>;
+  trends: {
+    attendance: Array<{ month: string; attendance: number }>;
+    passRate: Array<{ month: string; rate: number }>;
+  };
 };
 
-const departmentRiskData = [
-  { dept: 'Computer Science', attendance: 88, passRate: 92, accreditationScore: 85, risk: 'low' },
-  { dept: 'Electronics', attendance: 75, passRate: 78, accreditationScore: 72, risk: 'medium' },
-  { dept: 'Mechanical', attendance: 82, passRate: 85, accreditationScore: 80, risk: 'low' },
-  { dept: 'Civil', attendance: 68, passRate: 72, accreditationScore: 65, risk: 'high' },
-];
-
-const attendanceTrend = [
-  { month: 'Jul', attendance: 85 },
-  { month: 'Aug', attendance: 86 },
-  { month: 'Sep', attendance: 87 },
-  { month: 'Oct', attendance: 88 },
-  { month: 'Nov', attendance: 87.5 },
-];
-
-const passRateTrend = [
-  { sem: 'Sem 1', rate: 85 },
-  { sem: 'Sem 2', rate: 87 },
-  { sem: 'Sem 3', rate: 88 },
-  { sem: 'Sem 4', rate: 89.2 },
-];
-
 export default function PrincipalDashboard() {
+  const { toast } = useToast();
+  const [stats, setStats] = useState<StatsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/stats');
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to fetch dashboard stats');
+      }
+
+      setStats(data.data);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to fetch dashboard stats',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const departmentRiskData = useMemo(
+    () =>
+      (stats?.departments || []).map((department) => ({
+        dept: department.department,
+        attendance: Number(department.attendanceAvg.toFixed(1)),
+        passRate: Number(department.marksAvg.toFixed(1)),
+        accreditationScore: Number(((department.attendanceAvg + department.marksAvg) / 2).toFixed(1)),
+        risk: department.risk,
+      })),
+    [stats]
+  );
+
+  const attendanceTrend = stats?.trends.attendance || [];
+  const passRateTrend = (stats?.trends.passRate || []).map((point) => ({ sem: point.month, rate: point.rate }));
+
   const atRiskDepartments = departmentRiskData.filter(d => d.risk === 'high' || d.risk === 'medium');
 
   return (
@@ -67,9 +106,9 @@ export default function PrincipalDashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpiData.totalStudents}</div>
+            <div className="text-2xl font-bold">{loading ? '--' : stats?.counts.students || 0}</div>
             <p className="text-xs text-muted-foreground">
-              <TrendingUp className="inline h-3 w-3 text-green-500" /> +5.2% from last year
+              <TrendingUp className="inline h-3 w-3 text-green-500" /> Live enrollment count
             </p>
           </CardContent>
         </Card>
@@ -80,8 +119,8 @@ export default function PrincipalDashboard() {
             <GraduationCap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpiData.totalFaculty}</div>
-            <p className="text-xs text-muted-foreground">Across 8 departments</p>
+            <div className="text-2xl font-bold">{loading ? '--' : stats?.counts.faculty || 0}</div>
+            <p className="text-xs text-muted-foreground">Teaching staff count</p>
           </CardContent>
         </Card>
 
@@ -91,9 +130,9 @@ export default function PrincipalDashboard() {
             <CalendarCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpiData.overallAttendance}%</div>
+            <div className="text-2xl font-bold">{loading ? '--' : `${stats?.averages.attendance.toFixed(1)}%`}</div>
             <p className="text-xs text-muted-foreground">
-              <TrendingUp className="inline h-3 w-3 text-green-500" /> +1.5% this month
+              <TrendingUp className="inline h-3 w-3 text-green-500" /> Average from attendance records
             </p>
           </CardContent>
         </Card>
@@ -104,9 +143,9 @@ export default function PrincipalDashboard() {
             <Award className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpiData.overallPassRate}%</div>
+            <div className="text-2xl font-bold">{loading ? '--' : `${stats?.averages.passRate.toFixed(1)}%`}</div>
             <p className="text-xs text-muted-foreground">
-              <TrendingUp className="inline h-3 w-3 text-green-500" /> +2.1% from last sem
+              <TrendingUp className="inline h-3 w-3 text-green-500" /> Based on marks in database
             </p>
           </CardContent>
         </Card>
@@ -117,7 +156,7 @@ export default function PrincipalDashboard() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{kpiData.facultyUtilization}%</div>
+            <div className="text-2xl font-bold">{loading ? '--' : `${stats?.averages.facultyUtilization.toFixed(1)}%`}</div>
             <p className="text-xs text-muted-foreground">Optimal range: 85-95%</p>
           </CardContent>
         </Card>
@@ -161,7 +200,7 @@ export default function PrincipalDashboard() {
                 <LineChart data={attendanceTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
-                  <YAxis domain={[80, 90]} />
+                  <YAxis domain={[0, 100]} />
                   <Tooltip />
                   <Line type="monotone" dataKey="attendance" stroke="hsl(var(--primary))" strokeWidth={2} />
                 </LineChart>
@@ -181,7 +220,7 @@ export default function PrincipalDashboard() {
                 <BarChart data={passRateTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="sem" />
-                  <YAxis domain={[80, 95]} />
+                  <YAxis domain={[0, 100]} />
                   <Tooltip />
                   <Bar dataKey="rate" fill="hsl(var(--primary))" />
                 </BarChart>
@@ -225,15 +264,12 @@ export default function PrincipalDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Grievances & Finance</CardTitle>
-            <CardDescription>Handle submissions and budgets</CardDescription>
+            <CardTitle>Escalations</CardTitle>
+            <CardDescription>Review complete escalation reports and statuses</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <Button className="w-full" asChild>
-              <Link href="/principal/grievances">View Grievances</Link>
-            </Button>
-            <Button className="w-full" variant="outline" asChild>
-              <Link href="/principal/finance">Financial Dashboard</Link>
+              <Link href="/principal/escalations">View Escalation Reports</Link>
             </Button>
           </CardContent>
         </Card>

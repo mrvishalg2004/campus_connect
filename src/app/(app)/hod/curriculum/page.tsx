@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,71 +17,162 @@ interface SyllabusUpdate {
   courseName: string;
   documentType: string;
   currentVersion: string;
-  submittedBy: { name: string };
+  submittedBy?: { name?: string };
   status: 'pending' | 'approved' | 'rejected' | 'revision-requested';
   effectiveDate?: string;
-  changeLogs: Array<{ version: string; changes: string; effectiveDate: string }>;
+  reviewComments?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  changeLogs: Array<{
+    version: string;
+    changes: string;
+    effectiveDate: string;
+    updatedBy?: { name?: string };
+  }>;
 }
 
 export default function CurriculumPage() {
-  const [syllabusUpdates, setSyllabusUpdates] = useState<SyllabusUpdate[]>([
-    {
-      _id: '1',
-      courseCode: 'CS301',
-      courseName: 'Data Structures',
-      documentType: 'syllabus',
-      currentVersion: '2.1',
-      submittedBy: { name: 'Dr. Smith' },
-      status: 'pending',
-      changeLogs: [
-        { version: '2.0', changes: 'Added Graph Algorithms module', effectiveDate: '2024-01-15' },
-        { version: '1.0', changes: 'Initial syllabus', effectiveDate: '2023-08-01' },
-      ],
-    },
-    {
-      _id: '2',
-      courseCode: 'CS401',
-      courseName: 'Machine Learning Lab',
-      documentType: 'lab-manual',
-      currentVersion: '1.2',
-      submittedBy: { name: 'Prof. Johnson' },
-      status: 'approved',
-      effectiveDate: '2024-12-01',
-      changeLogs: [
-        { version: '1.1', changes: 'Updated TensorFlow exercises', effectiveDate: '2024-06-01' },
-      ],
-    },
-  ]);
+  const [syllabusUpdates, setSyllabusUpdates] = useState<SyllabusUpdate[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedUpdate, setSelectedUpdate] = useState<SyllabusUpdate | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [reviewComments, setReviewComments] = useState('');
+  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
+  const fetchSyllabusUpdates = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/curriculum');
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load curriculum updates');
+      }
+
+      setSyllabusUpdates(data.data || []);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to load curriculum updates',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSyllabusUpdates();
+  }, []);
+
+  const updateReviewStatus = async (status: 'approved' | 'rejected' | 'revision-requested') => {
+    if (!selectedUpdate) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const response = await fetch(`/api/curriculum/${selectedUpdate._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          reviewComments,
+          effectiveDate: selectedUpdate.effectiveDate,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update review status');
+      }
+
+      toast({
+        title: status === 'approved' ? 'Document Approved' : status === 'rejected' ? 'Document Rejected' : 'Revision Requested',
+        description:
+          status === 'approved'
+            ? 'The document has been approved.'
+            : status === 'rejected'
+              ? 'The document has been rejected.'
+              : 'Revision request sent to submitter.',
+        variant: status === 'rejected' ? 'destructive' : 'default',
+      });
+
+      setShowReviewDialog(false);
+      setSelectedUpdate(null);
+      setReviewComments('');
+      fetchSyllabusUpdates();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update review status',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleApprove = async () => {
-    toast({
-      title: "Document Approved",
-      description: "The document has been approved and will be effective from the specified date.",
-    });
-    setShowReviewDialog(false);
+    await updateReviewStatus('approved');
   };
 
   const handleReject = async () => {
-    toast({
-      title: "Document Rejected",
-      description: "The submitter has been notified.",
-      variant: "destructive",
-    });
-    setShowReviewDialog(false);
+    await updateReviewStatus('rejected');
   };
 
   const handleRequestRevision = async () => {
-    toast({
-      title: "Revision Requested",
-      description: "The submitter has been asked to revise the document.",
-    });
-    setShowReviewDialog(false);
+    await updateReviewStatus('revision-requested');
   };
+
+  const pendingCount = useMemo(
+    () => syllabusUpdates.filter((update) => update.status === 'pending').length,
+    [syllabusUpdates]
+  );
+
+  const approvedCount = useMemo(
+    () => syllabusUpdates.filter((update) => update.status === 'approved').length,
+    [syllabusUpdates]
+  );
+
+  const totalCount = syllabusUpdates.length;
+
+  const handleReviewOpen = (update: SyllabusUpdate) => {
+    setSelectedUpdate(update);
+    setReviewComments(update.reviewComments || '');
+    setShowReviewDialog(true);
+  };
+
+  const formatDisplayDate = (value?: string) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString();
+  };
+
+  const handleHistoryOpen = (update: SyllabusUpdate) => {
+    setSelectedUpdate(update);
+    setShowHistoryDialog(true);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setShowReviewDialog(open);
+    if (!open) {
+      setSelectedUpdate(null);
+      setReviewComments('');
+    }
+  };
+
+  const handleHistoryDialogClose = (open: boolean) => {
+    setShowHistoryDialog(open);
+    if (!open) {
+      setSelectedUpdate(null);
+    }
+  };
+
+  const getSubmittedByName = (update: SyllabusUpdate) => update.submittedBy?.name || 'Unknown';
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -122,9 +213,7 @@ export default function CurriculumPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {syllabusUpdates.filter(s => s.status === 'pending').length}
-            </div>
+            <div className="text-2xl font-bold">{loading ? '--' : pendingCount}</div>
           </CardContent>
         </Card>
         <Card>
@@ -133,7 +222,7 @@ export default function CurriculumPage() {
             <Check className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
+            <div className="text-2xl font-bold">{loading ? '--' : approvedCount}</div>
           </CardContent>
         </Card>
         <Card>
@@ -142,7 +231,7 @@ export default function CurriculumPage() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">48</div>
+            <div className="text-2xl font-bold">{loading ? '--' : totalCount}</div>
           </CardContent>
         </Card>
       </div>
@@ -173,7 +262,7 @@ export default function CurriculumPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {syllabusUpdates.filter(s => s.status === 'pending').map((update) => (
+                  {syllabusUpdates.filter((s) => s.status === 'pending').map((update) => (
                     <TableRow key={update._id}>
                       <TableCell>
                         <div className="font-medium">{update.courseCode}</div>
@@ -181,17 +270,14 @@ export default function CurriculumPage() {
                       </TableCell>
                       <TableCell>{getDocTypeBadge(update.documentType)}</TableCell>
                       <TableCell>v{update.currentVersion}</TableCell>
-                      <TableCell>{update.submittedBy.name}</TableCell>
+                      <TableCell>{getSubmittedByName(update)}</TableCell>
                       <TableCell>{getStatusBadge(update.status)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              setSelectedUpdate(update);
-                              setShowReviewDialog(true);
-                            }}
+                            onClick={() => handleReviewOpen(update)}
                           >
                             <Eye className="h-4 w-4 mr-1" />
                             Review
@@ -199,10 +285,7 @@ export default function CurriculumPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              setSelectedUpdate(update);
-                              setShowHistoryDialog(true);
-                            }}
+                            onClick={() => handleHistoryOpen(update)}
                           >
                             <History className="h-4 w-4 mr-1" />
                             History
@@ -227,7 +310,7 @@ export default function CurriculumPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {syllabusUpdates.filter(s => s.status === 'approved').map((update) => (
+                  {syllabusUpdates.filter((s) => s.status === 'approved').map((update) => (
                     <TableRow key={update._id}>
                       <TableCell>
                         <div className="font-medium">{update.courseCode}</div>
@@ -235,16 +318,13 @@ export default function CurriculumPage() {
                       </TableCell>
                       <TableCell>{getDocTypeBadge(update.documentType)}</TableCell>
                       <TableCell>v{update.currentVersion}</TableCell>
-                      <TableCell>{update.effectiveDate}</TableCell>
+                      <TableCell>{formatDisplayDate(update.effectiveDate)}</TableCell>
                       <TableCell>{getStatusBadge(update.status)}</TableCell>
                       <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            setSelectedUpdate(update);
-                            setShowHistoryDialog(true);
-                          }}
+                          onClick={() => handleHistoryOpen(update)}
                         >
                           <History className="h-4 w-4 mr-1" />
                           History
@@ -280,10 +360,7 @@ export default function CurriculumPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            setSelectedUpdate(update);
-                            setShowHistoryDialog(true);
-                          }}
+                          onClick={() => handleHistoryOpen(update)}
                         >
                           <History className="h-4 w-4 mr-1" />
                           History
@@ -299,7 +376,7 @@ export default function CurriculumPage() {
       </Card>
 
       {/* Review Dialog */}
-      <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
+      <Dialog open={showReviewDialog} onOpenChange={handleDialogClose}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Review Document</DialogTitle>
@@ -313,7 +390,7 @@ export default function CurriculumPage() {
               <div className="text-sm space-y-1">
                 <p>Type: {selectedUpdate?.documentType}</p>
                 <p>Version: {selectedUpdate?.currentVersion}</p>
-                <p>Submitted by: {selectedUpdate?.submittedBy.name}</p>
+                <p>Submitted by: {selectedUpdate?.submittedBy?.name || 'Unknown'}</p>
               </div>
             </div>
 
@@ -331,23 +408,23 @@ export default function CurriculumPage() {
             <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
               Cancel
             </Button>
-            <Button variant="secondary" onClick={handleRequestRevision}>
+            <Button variant="secondary" onClick={handleRequestRevision} disabled={saving}>
               Request Revision
             </Button>
-            <Button variant="destructive" onClick={handleReject}>
+            <Button variant="destructive" onClick={handleReject} disabled={saving}>
               <X className="mr-2 h-4 w-4" />
               Reject
             </Button>
-            <Button onClick={handleApprove}>
+            <Button onClick={handleApprove} disabled={saving}>
               <Check className="mr-2 h-4 w-4" />
-              Approve
+              {saving ? 'Saving...' : 'Approve'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Change History Dialog */}
-      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+      <Dialog open={showHistoryDialog} onOpenChange={handleHistoryDialogClose}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Change History</DialogTitle>
@@ -360,9 +437,10 @@ export default function CurriculumPage() {
               <div key={index} className="border-l-2 border-primary pl-4 pb-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge variant="outline">v{log.version}</Badge>
-                  <span className="text-xs text-muted-foreground">{log.effectiveDate}</span>
+                  <span className="text-xs text-muted-foreground">{formatDisplayDate(log.effectiveDate)}</span>
                 </div>
                 <p className="text-sm">{log.changes}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Updated by {log.updatedBy?.name || 'Unknown'}</p>
               </div>
             ))}
           </div>

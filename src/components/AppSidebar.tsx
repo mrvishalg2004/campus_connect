@@ -39,26 +39,34 @@ const navItems: NavItem[] = [
   // Student
   { href: '/student', icon: LayoutDashboard, label: 'Dashboard', roles: ['student'] },
   { href: '/student/profile', icon: User, label: 'Profile', roles: ['student'] },
-  { href: '/student/notifications', icon: Bell, label: 'Notifications', roles: ['student'] },
+  { href: '/student/notices', icon: Bell, label: 'Notices', roles: ['student'] },
   { href: '/student/library', icon: BookOpen, label: 'Digital Library', roles: ['student'] },
   { href: '/student/doubts', icon: HelpCircle, label: 'Anonymous Doubts', roles: ['student'] },
   { href: '/student/chat/general', icon: MessageSquare, label: 'Chat Room', roles: ['student'] },
   { href: '/student/assignments', icon: ClipboardList, label: 'Assignments', roles: ['student'] },
+  { href: '/student/marks', icon: GraduationCap, label: 'Marks', roles: ['student'] },
+  { href: '/student/escalations', icon: AlertTriangle, label: 'Escalations', roles: ['student'] },
   { href: '/student/events', icon: Briefcase, label: 'Events', roles: ['student'] },
 
   // Teacher
   { href: '/teacher', icon: LayoutDashboard, label: 'Dashboard', roles: ['teacher'] },
+  { href: '/teacher/notifications', icon: Bell, label: 'Notices', roles: ['teacher'] },
   { href: '/teacher/attendance', icon: CalendarCheck, label: 'Attendance', roles: ['teacher'] },
   { href: '/teacher/marks', icon: GraduationCap, label: 'Marks', roles: ['teacher'] },
   { href: '/teacher/assignments', icon: FileText, label: 'Assignments', roles: ['teacher'] },
   { href: '/teacher/progress', icon: TrendingUp, label: 'Student Progress', roles: ['teacher'] },
+  { href: '/teacher/projects', icon: Award, label: 'Projects', roles: ['teacher'] },
+  { href: '/teacher/curriculum', icon: FolderOpen, label: 'Curriculum', roles: ['teacher'] },
   { href: '/teacher/materials', icon: BookOpen, label: 'Materials', roles: ['teacher'] },
   { href: '/teacher/doubts', icon: ShieldQuestion, label: 'Anonymous Doubts', roles: ['teacher'] },
+  { href: '/teacher/leaves', icon: CalendarCheck, label: 'Leave Requests', roles: ['teacher'] },
+  { href: '/teacher/escalations', icon: AlertTriangle, label: 'Escalations', roles: ['teacher'] },
   { href: '/teacher/events', icon: Briefcase, label: 'Events', roles: ['teacher'] },
 
 
   // HOD
   { href: '/hod', icon: LayoutDashboard, label: 'Dashboard', roles: ['hod'] },
+  { href: '/hod/notifications', icon: Bell, label: 'Notices', roles: ['hod'] },
   { href: '/hod/faculty', icon: Users, label: 'Faculty Management', roles: ['hod'] },
   { href: '/hod/analytics', icon: BarChart3, label: 'Analytics', roles: ['hod'] },
   { href: '/hod/curriculum', icon: FolderOpen, label: 'Curriculum', roles: ['hod'] },
@@ -68,6 +76,7 @@ const navItems: NavItem[] = [
   // Principal
   { href: '/principal', icon: LayoutDashboard, label: 'Dashboard', roles: ['principal'] },
   { href: '/principal/kpi', icon: BarChart3, label: 'KPIs', roles: ['principal'] },
+  { href: '/principal/projects', icon: Award, label: 'Projects', roles: ['principal'] },
   { href: '/principal/notices', icon: Megaphone, label: 'Notices', roles: ['principal'] },
   { href: '/principal/events', icon: Briefcase, label: 'Events', roles: ['principal'] },
 ];

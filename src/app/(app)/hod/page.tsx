@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,45 +12,202 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Line, 
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import StudentsList from "@/components/dashboard/StudentsList";
+import { useToast } from '@/hooks/use-toast';
+import NoticesPanel from '@/components/dashboard/NoticesPanel';
 
-const attendanceData = [
-  { name: 'Physics', value: 92 },
-  { name: 'Chemistry', value: 88 },
-  { name: 'Maths', value: 95 },
-  { name: 'CS', value: 91 },
-  { name: 'Biology', value: 68 }, // Low attendance - risk
-];
+type DashboardStats = {
+  counts: {
+    students: number;
+    faculty: number;
+  };
+  averages: {
+    attendance: number;
+    marks: number;
+    passRate: number;
+  };
+  trends: {
+    attendance: Array<{ month: string; attendance: number }>;
+    passRate: Array<{ month: string; rate: number }>;
+  };
+  departments: Array<{
+    department: string;
+    attendanceAvg: number;
+    marksAvg: number;
+    risk: 'low' | 'medium' | 'high';
+  }>;
+};
 
-const passFailData = [
-  { name: 'Sem 1', pass: 85, fail: 15 },
-  { name: 'Sem 2', pass: 88, fail: 12 },
-  { name: 'Sem 3', pass: 90, fail: 10 },
-  { name: 'Sem 4', pass: 92, fail: 8 },
-];
+type LeaveRequest = {
+  _id: string;
+  facultyId?: { _id: string; name: string };
+  startDate: string;
+  endDate: string;
+  status: 'pending' | 'approved' | 'rejected';
+};
 
-const workloadData = [
-    ['Mon', 'Dr. Reed', 4],
-    ['Mon', 'Prof. Smith', 3],
-    ['Tue', 'Dr. Reed', 2],
-    ['Tue', 'Prof. Jones', 5],
-    ['Wed', 'Prof. Smith', 4],
-    ['Thu', 'Dr. Reed', 3],
-    ['Thu', 'Prof. Jones', 4],
-    ['Fri', 'Prof. Smith', 2],
-].map(p => ({ day: p[0], faculty: p[1], hours: p[2] as number }));
-
-const riskCourses = [
-  { course: 'Biology (Sem 3)', type: 'Low Attendance', value: '68%', severity: 'high' },
-  { course: 'Chemistry (Sem 2)', type: 'High Failure Rate', value: '28%', severity: 'medium' },
-];
-
-const leaveRequests = [
-  { id: 1, faculty: 'Dr. Evelyn Reed', from: '2024-08-10', to: '2024-08-12', reason: 'Personal', status: 'Pending' },
-  { id: 2, faculty: 'Prof. John Smith', from: '2024-08-15', to: '2024-08-15', reason: 'Medical', status: 'Pending' },
-  { id: 3, faculty: 'Prof. Alan Jones', from: '2024-07-20', to: '2024-07-21', reason: 'Conference', status: 'Approved' },
-];
+type Assignment = {
+  _id: string;
+  dueDate: string;
+  teacherId?: { name: string };
+};
 
 export default function HodDashboard() {
+  const { toast } = useToast();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const fetchDashboard = async () => {
+    try {
+      setLoading(true);
+
+      const [statsRes, leavesRes, assignmentsRes] = await Promise.all([
+        fetch('/api/admin/stats'),
+        fetch('/api/leaves'),
+        fetch('/api/assignments'),
+      ]);
+
+      const [statsData, leavesData, assignmentsData] = await Promise.all([
+        statsRes.json(),
+        leavesRes.json(),
+        assignmentsRes.json(),
+      ]);
+
+      if (!statsRes.ok || !statsData.success) {
+        throw new Error(statsData.error || 'Failed to load admin stats');
+      }
+
+      setStats(statsData.data);
+      setLeaveRequests(leavesData.success ? leavesData.data || [] : []);
+      setAssignments(assignmentsData.success ? assignmentsData.data || [] : []);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to load dashboard',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const attendanceData = useMemo(
+    () =>
+      (stats?.departments || []).map((department) => ({
+        name: department.department,
+        value: Number(department.attendanceAvg.toFixed(1)),
+      })),
+    [stats]
+  );
+
+  const passFailData = useMemo(
+    () =>
+      (stats?.trends.passRate || []).map((point) => ({
+        name: point.month,
+        pass: Number(point.rate.toFixed(1)),
+        fail: Number((100 - point.rate).toFixed(1)),
+      })),
+    [stats]
+  );
+
+  const riskCourses = useMemo(
+    () =>
+      (stats?.departments || [])
+        .filter((department) => department.risk !== 'low')
+        .map((department) => ({
+          course: `${department.department}`,
+          type: department.attendanceAvg < 75 ? 'Low Attendance' : 'Low Marks',
+          value: department.attendanceAvg < 75
+            ? `${department.attendanceAvg.toFixed(1)}%`
+            : `${department.marksAvg.toFixed(1)}%`,
+          severity: department.risk,
+        })),
+    [stats]
+  );
+
+  const workloadData = useMemo(() => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    const byTeacherDay: Record<string, number> = {};
+
+    assignments.forEach((assignment) => {
+      const teacher = assignment.teacherId?.name;
+      if (!teacher) return;
+
+      const date = new Date(assignment.dueDate);
+      const dayIndex = date.getDay();
+      if (dayIndex === 0 || dayIndex === 6) return;
+
+      const day = days[dayIndex - 1];
+      const key = `${teacher}__${day}`;
+      byTeacherDay[key] = (byTeacherDay[key] || 0) + 1;
+    });
+
+    return Object.entries(byTeacherDay).map(([key, value]) => {
+      const [faculty, day] = key.split('__');
+      return { faculty, day, hours: value };
+    });
+  }, [assignments]);
+
+  const facultyNames = useMemo(() => {
+    const names = Array.from(new Set(workloadData.map((item) => item.faculty)));
+    return names.slice(0, 5);
+  }, [workloadData]);
+
+  const pendingLeaves = leaveRequests.filter((request) => request.status === 'pending');
+
+  const handleLeaveAction = async (leaveId: string, status: 'approved' | 'rejected') => {
+    try {
+      const response = await fetch(`/api/leaves/${leaveId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update leave request');
+      }
+
+      toast({
+        title: `Leave ${status}`,
+        description: `Leave request has been ${status}.`,
+      });
+
+      fetchDashboard();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update leave request',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const exportPendingLeaves = () => {
+    const rows = pendingLeaves.map((request) => [
+      request.facultyId?.name || 'Unknown',
+      new Date(request.startDate).toLocaleDateString(),
+      new Date(request.endDate).toLocaleDateString(),
+      request.status,
+    ]);
+
+    const csv = [['Faculty', 'Start Date', 'End Date', 'Status'], ...rows]
+      .map((row) => row.join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `hod-leave-approvals-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
   return (
     <>
     <div className="space-y-6">
@@ -61,8 +219,8 @@ export default function HodDashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-muted-foreground">+2 this semester</p>
+            <div className="text-2xl font-bold">{loading ? '--' : stats?.counts.faculty || 0}</div>
+            <p className="text-xs text-muted-foreground">Live count from user records</p>
           </CardContent>
         </Card>
         <Card>
@@ -71,8 +229,8 @@ export default function HodDashboard() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">42</div>
-            <p className="text-xs text-muted-foreground">Across 4 semesters</p>
+            <div className="text-2xl font-bold">{loading ? '--' : assignments.length}</div>
+            <p className="text-xs text-muted-foreground">Assignments and course work tracked</p>
           </CardContent>
         </Card>
         <Card>
@@ -81,8 +239,8 @@ export default function HodDashboard() {
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">88.8%</div>
-            <p className="text-xs text-muted-foreground">-2.3% from last month</p>
+            <div className="text-2xl font-bold">{loading ? '--' : `${stats?.averages.attendance.toFixed(1)}%`}</div>
+            <p className="text-xs text-muted-foreground">Average across attendance records</p>
           </CardContent>
         </Card>
         <Card>
@@ -169,7 +327,7 @@ export default function HodDashboard() {
                     <div className="grid grid-cols-6 gap-1 text-center text-xs">
                         <div></div>
                         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => <div key={day} className="font-semibold">{day}</div>)}
-                        {['Dr. Reed', 'Prof. Smith', 'Prof. Jones'].map(faculty => (
+                        {facultyNames.length > 0 ? facultyNames.map(faculty => (
                             <>
                                 <div key={faculty} className="text-right pr-2 font-semibold">{faculty}</div>
                                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => {
@@ -181,21 +339,22 @@ export default function HodDashboard() {
                                     )
                                 })}
                             </>
-                        ))}
+                            )) : <div className="col-span-6 text-muted-foreground text-center py-4">No workload records available.</div>}
                     </div>
                 </CardContent>
             </Card>
         </div>
 
         {/* Leave Approvals */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 grid gap-4 auto-rows-max">
+          <NoticesPanel viewAllHref="/hod/notifications" />
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
                         <CardTitle>Leave Approvals</CardTitle>
                         <CardDescription>Pending faculty leave requests.</CardDescription>
                     </div>
-                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export</Button>
+                    <Button variant="outline" onClick={exportPendingLeaves}><Download className="mr-2 h-4 w-4" /> Export</Button>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -207,16 +366,22 @@ export default function HodDashboard() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {leaveRequests.filter(r => r.status === 'Pending').map(request => (
-                                <TableRow key={request.id}>
+                            {pendingLeaves.map(request => (
+                                <TableRow key={request._id}>
                                     <TableCell>
-                                        <div className="font-medium">{request.faculty}</div>
-                                        <div className="text-xs text-muted-foreground">{request.from} to {request.to}</div>
+                                        <div className="font-medium">{request.facultyId?.name || 'Unknown'}</div>
+                                        <div className="text-xs text-muted-foreground">
+                                          {new Date(request.startDate).toLocaleDateString()} to {new Date(request.endDate).toLocaleDateString()}
+                                        </div>
                                     </TableCell>
                                     <TableCell><Badge variant="destructive">{request.status}</Badge></TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon"><Check className="h-4 w-4 text-green-500" /></Button>
-                                        <Button variant="ghost" size="icon"><X className="h-4 w-4 text-red-500" /></Button>
+                                        <Button variant="ghost" size="icon" onClick={() => handleLeaveAction(request._id, 'approved')}>
+                                          <Check className="h-4 w-4 text-green-500" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" onClick={() => handleLeaveAction(request._id, 'rejected')}>
+                                          <X className="h-4 w-4 text-red-500" />
+                                        </Button>
                                     </TableCell>
                                 </TableRow>
                             ))}

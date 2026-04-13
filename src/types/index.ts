@@ -53,7 +53,7 @@ export interface ChatMessage {
     anonymous: boolean;
   };
   text: string;
-  attachments: { name: string; url: string; type: 'image' | 'pdf' }[];
+  attachments: { name: string; url: string; type: 'image' | 'pdf' | 'document' }[];
   upvotes: number;
   timestamp: string;
   replies: ChatMessage[];

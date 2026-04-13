@@ -21,11 +21,12 @@ interface Notice {
   category: string;
   priority: string;
   targetAudience: {
-    departments: string[];
-    years: number[];
-    roles: string[];
+    departments?: string[];
+    years?: number[];
+    roles?: string[];
+    specific?: string[];
   };
-  status: string;
+  isActive: boolean;
   createdAt: string;
 }
 
@@ -38,6 +39,7 @@ export default function NoticesPage() {
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [editingNoticeId, setEditingNoticeId] = useState<string | null>(null);
   
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +58,8 @@ export default function NoticesPage() {
       const res = await fetch('/api/notices');
       if (!res.ok) throw new Error('Failed to fetch notices');
       const data = await res.json();
-      setNotices(data);
+      if (!data.success) throw new Error(data.error || 'Failed to fetch notices');
+      setNotices(data.data || []);
     } catch (error) {
       console.error(error);
       toast({
@@ -85,37 +88,41 @@ export default function NoticesPage() {
 
     try {
       setSubmitting(true);
-      
-      const targetAudienceString = [
-        ...selectedDepts,
-        ...selectedYears.map(y => `Year ${y}`),
-        ...selectedRoles
-      ].join(', ');
-      
+
       const payload = {
         title,
         content,
         category,
         priority,
-        targetAudience: targetAudienceString || 'All',
-        status: 'active',
-        createdBy: user?._id || user?.id,
+        targetAudience: {
+          departments: selectedDepts,
+          years: selectedYears,
+          roles: selectedRoles,
+        },
       };
 
-      const res = await fetch('/api/notices', {
-        method: 'POST',
+      const endpoint = editingNoticeId ? `/api/notices/${editingNoticeId}` : '/api/notices';
+      const method = editingNoticeId ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error('Failed to create notice');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to save notice');
 
       toast({
-        title: "Notice Created Successfully",
-        description: "The notice has been published to target audience",
+        title: editingNoticeId ? "Notice Updated" : "Notice Created Successfully",
+        description: editingNoticeId
+          ? "Notice updated successfully"
+          : "The notice has been published to target audience",
       });
       
       setShowCreateDialog(false);
+      setEditingNoticeId(null);
       setTitle('');
       setContent('');
       setCategory('');
@@ -137,6 +144,44 @@ export default function NoticesPage() {
     }
   };
 
+  const handleEdit = (notice: Notice) => {
+    setEditingNoticeId(notice._id);
+    setTitle(notice.title);
+    setContent(notice.content);
+    setCategory(notice.category);
+    setPriority(notice.priority);
+    setSelectedDepts(notice.targetAudience?.departments || []);
+    setSelectedYears(notice.targetAudience?.years || []);
+    setSelectedRoles(notice.targetAudience?.roles || []);
+    setShowCreateDialog(true);
+  };
+
+  const handleDelete = async (noticeId: string) => {
+    try {
+      const res = await fetch(`/api/notices/${noticeId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete notice');
+      }
+
+      toast({
+        title: 'Notice Deleted',
+        description: 'Notice removed successfully.',
+      });
+
+      fetchNotices();
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete notice',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const getPriorityBadge = (priority: string) => {
     const variants: Record<string, any> = {
       urgent: 'destructive',
@@ -154,7 +199,17 @@ export default function NoticesPage() {
           <h1 className="text-3xl font-bold">Notice Management</h1>
           <p className="text-muted-foreground">Create and manage college-wide circulars</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
+        <Button onClick={() => {
+          setEditingNoticeId(null);
+          setTitle('');
+          setContent('');
+          setCategory('');
+          setPriority('medium');
+          setSelectedDepts([]);
+          setSelectedYears([]);
+          setSelectedRoles([]);
+          setShowCreateDialog(true);
+        }}>
           <Plus className="mr-2 h-4 w-4" />
           Create Notice
         </Button>
@@ -195,17 +250,30 @@ export default function NoticesPage() {
                       <Badge variant="outline" className="capitalize">{notice.category}</Badge>
                     </TableCell>
                     <TableCell className="capitalize">{getPriorityBadge(notice.priority)}</TableCell>
-                    <TableCell className="max-w-[150px] truncate" title={typeof notice.targetAudience === 'string' ? notice.targetAudience : 'All'}>
-                      {typeof notice.targetAudience === 'string' ? notice.targetAudience : 'All'}
+                    <TableCell className="max-w-[150px] truncate" title={[
+                      ...(notice.targetAudience?.departments || []),
+                      ...(notice.targetAudience?.years || []).map((year) => `Year ${year}`),
+                      ...(notice.targetAudience?.roles || []),
+                    ].join(', ') || 'All'}>
+                      {[
+                        ...(notice.targetAudience?.departments || []),
+                        ...(notice.targetAudience?.years || []).map((year) => `Year ${year}`),
+                        ...(notice.targetAudience?.roles || []),
+                      ].join(', ') || 'All'}
                     </TableCell>
                     <TableCell>{new Date(notice.createdAt).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <Badge className="capitalize">{notice.status}</Badge>
+                      <Badge className="capitalize">{notice.isActive ? 'active' : 'inactive'}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(notice)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(notice._id)}>
+                          Delete
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -350,7 +418,7 @@ export default function NoticesPage() {
             </Button>
             <Button onClick={handleCreate} disabled={submitting}>
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              Publish Notice
+              {editingNoticeId ? 'Update Notice' : 'Publish Notice'}
             </Button>
           </DialogFooter>
         </DialogContent>

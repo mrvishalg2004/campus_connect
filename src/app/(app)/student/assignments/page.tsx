@@ -134,13 +134,28 @@ export default function StudentAssignmentsPage() {
   };
 
   const hasSubmitted = (assignment: Assignment) => {
-    // This would need to check if current user has submitted
-    return assignment.submissions && assignment.submissions.length > 0;
+    return Array.isArray(assignment.submissions) && assignment.submissions.length > 0;
+  };
+
+  const isSubmissionGraded = (assignment: Assignment) => {
+    const latestSubmission = getLatestSubmission(assignment);
+    return latestSubmission?.grade !== null && latestSubmission?.grade !== undefined;
+  };
+
+  const getLatestSubmission = (assignment: Assignment) => {
+    if (!Array.isArray(assignment.submissions) || assignment.submissions.length === 0) {
+      return null;
+    }
+
+    return assignment.submissions[0];
   };
 
   const getStatusBadge = (assignment: Assignment) => {
     if (hasSubmitted(assignment)) {
-      return <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" />Submitted</Badge>;
+      if (isSubmissionGraded(assignment)) {
+        return <Badge className="bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Graded</Badge>;
+      }
+      return <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" />Under Review</Badge>;
     }
     if (isOverdue(assignment.dueDate)) {
       return <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />Overdue</Badge>;
@@ -168,11 +183,11 @@ export default function StudentAssignmentsPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
+            <CardTitle className="text-sm font-medium">To Submit</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pendingAssignments.length}</div>
-            <p className="text-xs text-muted-foreground">Assignments to complete</p>
+            <p className="text-xs text-muted-foreground">Assignments not submitted yet</p>
           </CardContent>
         </Card>
         
@@ -192,7 +207,9 @@ export default function StudentAssignmentsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{submittedAssignments.length}</div>
-            <p className="text-xs text-muted-foreground">Completed assignments</p>
+            <p className="text-xs text-muted-foreground">
+              {submittedAssignments.filter((assignment) => isSubmissionGraded(assignment)).length} graded
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -340,6 +357,10 @@ export default function StudentAssignmentsPage() {
               <h2 className="text-xl font-semibold mb-4">Submitted Assignments</h2>
               <div className="space-y-4">
                 {submittedAssignments.map((assignment) => (
+                  (() => {
+                    const submission = getLatestSubmission(assignment);
+
+                    return (
                   <Card key={assignment._id} className="border-green-200">
                     <CardHeader>
                       <div className="flex justify-between items-start">
@@ -356,8 +377,24 @@ export default function StudentAssignmentsPage() {
                       <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4" />
-                          <span>Submitted on: {format(new Date(assignment.createdAt), 'MMM dd, yyyy')}</span>
+                          <span>
+                            Submitted on:{' '}
+                            {submission?.submittedAt
+                              ? format(new Date(submission.submittedAt), 'MMM dd, yyyy')
+                              : format(new Date(assignment.createdAt), 'MMM dd, yyyy')}
+                          </span>
                         </div>
+                        {submission?.grade !== null && submission?.grade !== undefined ? (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <span>Graded: {submission.grade}/{assignment.totalMarks}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-amber-500" />
+                            <span>Under review</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4" />
                           <span>{assignment.totalMarks} marks</span>
@@ -365,6 +402,8 @@ export default function StudentAssignmentsPage() {
                       </div>
                     </CardContent>
                   </Card>
+                    );
+                  })()
                 ))}
               </div>
             </div>

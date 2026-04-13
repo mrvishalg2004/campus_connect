@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Attendance from '@/models/Attendance';
+import { getAuthUser, hasRole, unauthorizedResponse } from '@/lib/auth';
 
 // GET - Fetch attendance records
 export async function GET(request: NextRequest) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
 
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
@@ -14,7 +20,9 @@ export async function GET(request: NextRequest) {
 
     let query: any = {};
 
-    if (userId) {
+    if (authUser.role === 'student') {
+      query.userId = authUser.userId;
+    } else if (userId) {
       query.userId = userId;
     }
 
@@ -40,6 +48,15 @@ export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
+    if (!hasRole(authUser, ['teacher', 'hod', 'principal'])) {
+      return unauthorizedResponse('Only faculty can create attendance records', 403);
+    }
+
     const body = await request.json();
     const attendance = await Attendance.create(body);
 
@@ -53,6 +70,15 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
+    if (!hasRole(authUser, ['teacher', 'hod', 'principal'])) {
+      return unauthorizedResponse('Only faculty can update attendance records', 403);
+    }
 
     const body = await request.json();
     const { id, ...updateData } = body;
@@ -80,6 +106,15 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await dbConnect();
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
+    if (!hasRole(authUser, ['teacher', 'hod', 'principal'])) {
+      return unauthorizedResponse('Only faculty can delete attendance records', 403);
+    }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

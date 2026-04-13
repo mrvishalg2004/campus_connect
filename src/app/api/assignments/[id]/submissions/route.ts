@@ -1,18 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Assignment from '@/models/Assignment';
-import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import Notification from '@/models/Notification';
+import { getAuthUser, unauthorizedResponse } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-const verifyToken = (token: string) => {
+// GET /api/assignments/[id]/submissions - List submissions (teacher/hod/principal)
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
-  } catch {
-    return null;
+    await dbConnect();
+
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
+    const assignment = await Assignment.findById(params.id)
+      .populate('submissions.studentId', 'name email rollNumber')
+      .populate('teacherId', 'name email');
+
+    if (!assignment) {
+      return NextResponse.json(
+        { success: false, error: 'Assignment not found' },
+        { status: 404 }
+      );
+    }
+
+    if (authUser.role === 'teacher' && assignment.teacherId.toString() !== authUser.userId) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
+
+    if (authUser.role === 'student') {
+      const ownSubmission = assignment.submissions.filter(
+        (submission: any) =>
+          (submission.studentId?._id?.toString?.() || submission.studentId?.toString?.()) === authUser.userId
+      );
+
+      return NextResponse.json({
+        success: true,
+        data: ownSubmission,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: assignment.submissions,
+    });
+  } catch (error: any) {
+    console.error('Error fetching submissions:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   }
-};
+}
 
 // POST /api/assignments/[id]/submissions - Submit assignment (student)
 export async function POST(
@@ -22,24 +66,17 @@ export async function POST(
   try {
     await dbConnect();
 
-    const token = req.cookies.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = verifyToken(token);
-    if (!decoded || decoded.role !== 'student') {
-      return NextResponse.json(
-        { success: false, error: 'Only students can submit assignments' },
-        { status: 403 }
-      );
+    if (authUser.role !== 'student') {
+      return unauthorizedResponse('Only students can submit assignments', 403);
     }
 
     const body = await req.json();
-    const { attachments, comments } = body;
+    const { attachments, comments, content, fileUrl } = body;
 
     const assignment = await Assignment.findById(params.id);
 
@@ -60,7 +97,7 @@ export async function POST(
 
     // Check if student already submitted
     const existingSubmission = assignment.submissions.find(
-      (sub: any) => sub.studentId.toString() === decoded.userId
+      (sub: any) => sub.studentId.toString() === authUser.userId
     );
 
     if (existingSubmission) {
@@ -71,10 +108,17 @@ export async function POST(
     }
 
     // Add submission
+    const normalizedAttachments = [
+      ...(Array.isArray(attachments) ? attachments : []),
+      ...(fileUrl ? [fileUrl] : []),
+    ];
+
     assignment.submissions.push({
-      studentId: new mongoose.Types.ObjectId(decoded.userId),
+      studentId: new mongoose.Types.ObjectId(authUser.userId),
       submittedAt: new Date(),
-      attachments: attachments || [],
+      content: content || '',
+      fileUrl: fileUrl || '',
+      attachments: normalizedAttachments,
       comments: comments || '',
       grade: null,
       feedback: '',
@@ -104,20 +148,13 @@ export async function PUT(
   try {
     await dbConnect();
 
-    const token = req.cookies.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(req);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = verifyToken(token);
-    if (!decoded || decoded.role !== 'teacher') {
-      return NextResponse.json(
-        { success: false, error: 'Only teachers can grade assignments' },
-        { status: 403 }
-      );
+    if (authUser.role !== 'teacher') {
+      return unauthorizedResponse('Only teachers can grade assignments', 403);
     }
 
     const body = await req.json();
@@ -140,7 +177,7 @@ export async function PUT(
     }
 
     // Check if teacher owns this assignment
-    if (assignment.teacherId.toString() !== decoded.userId) {
+    if (assignment.teacherId.toString() !== authUser.userId) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 }
@@ -173,6 +210,16 @@ export async function PUT(
     submission.gradedAt = new Date();
 
     await assignment.save();
+
+    await Notification.create({
+      userId: studentId,
+      text: `Your submission for "${assignment.title}" has been graded: ${grade}/${assignment.totalMarks}.`,
+      type: 'success',
+      category: 'general',
+      link: '/student/assignments',
+      read: false,
+      timestamp: new Date(),
+    });
 
     return NextResponse.json({
       success: true,

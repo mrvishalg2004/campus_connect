@@ -1,27 +1,76 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import { useToast } from '@/hooks/use-toast';
+
+type StatsPayload = {
+  counts: { students: number; faculty: number };
+  averages: { attendance: number; passRate: number; facultyUtilization: number };
+  departments: Array<{ department: string; attendanceAvg: number; marksAvg: number; risk: 'low' | 'medium' | 'high' }>;
+  trends: {
+    attendance: Array<{ month: string; attendance: number }>;
+    passRate: Array<{ month: string; rate: number }>;
+  };
+};
 
 export default function KpiPage() {
-  const departmentData = [
-    { name: 'Computer Science', passRate: 92, attendance: 89, placement: 85, research: 78 },
-    { name: 'Mechanical', passRate: 88, attendance: 86, placement: 82, research: 72 },
-    { name: 'Civil', passRate: 85, attendance: 83, placement: 75, research: 65 },
-    { name: 'Electronics', passRate: 90, attendance: 87, placement: 84, research: 76 },
-    { name: 'IT', passRate: 91, attendance: 88, placement: 86, research: 80 },
-  ];
+  const { toast } = useToast();
+  const [stats, setStats] = useState<StatsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const trendData = [
-    { month: 'Aug', attendance: 85, passRate: 87, placement: 80 },
-    { month: 'Sep', attendance: 86, passRate: 88, placement: 82 },
-    { month: 'Oct', attendance: 87, passRate: 89, placement: 84 },
-    { month: 'Nov', attendance: 87.5, passRate: 89.2, placement: 85 },
-  ];
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/stats');
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to fetch KPI data');
+      }
+
+      setStats(data.data);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to fetch KPI data',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const departmentData = useMemo(
+    () =>
+      (stats?.departments || []).map((department) => ({
+        name: department.department,
+        passRate: Number(department.marksAvg.toFixed(1)),
+        attendance: Number(department.attendanceAvg.toFixed(1)),
+        placement: Number(((department.marksAvg + department.attendanceAvg) / 2).toFixed(1)),
+        research: department.risk === 'high' ? 60 : department.risk === 'medium' ? 75 : 90,
+      })),
+    [stats]
+  );
+
+  const trendData = useMemo(() => {
+    const attendanceByMonth = new Map((stats?.trends.attendance || []).map((entry) => [entry.month, entry.attendance]));
+    return (stats?.trends.passRate || []).map((entry) => ({
+      month: entry.month,
+      attendance: Number((attendanceByMonth.get(entry.month) || 0).toFixed(1)),
+      passRate: Number(entry.rate.toFixed(1)),
+      placement: Number((((attendanceByMonth.get(entry.month) || 0) + entry.rate) / 2).toFixed(1)),
+    }));
+  }, [stats]);
 
   return (
     <div className="space-y-6">
@@ -37,8 +86,8 @@ export default function KpiPage() {
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">89.2%</div>
-            <p className="text-xs text-muted-foreground">+2.5% from last semester</p>
+            <div className="text-2xl font-bold">{loading ? '--' : `${stats?.averages.passRate.toFixed(1)}%`}</div>
+            <p className="text-xs text-muted-foreground">Calculated from marks data</p>
           </CardContent>
         </Card>
         <Card>
@@ -47,8 +96,8 @@ export default function KpiPage() {
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">87.5%</div>
-            <p className="text-xs text-muted-foreground">+1.5% from last month</p>
+            <div className="text-2xl font-bold">{loading ? '--' : `${stats?.averages.attendance.toFixed(1)}%`}</div>
+            <p className="text-xs text-muted-foreground">Calculated from attendance records</p>
           </CardContent>
         </Card>
         <Card>
@@ -57,8 +106,12 @@ export default function KpiPage() {
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">85%</div>
-            <p className="text-xs text-muted-foreground">+3% from last year</p>
+            <div className="text-2xl font-bold">
+              {loading
+                ? '--'
+                : `${departmentData.length ? (departmentData.reduce((sum, dept) => sum + dept.placement, 0) / departmentData.length).toFixed(1) : '0.0'}%`}
+            </div>
+            <p className="text-xs text-muted-foreground">Composite performance indicator</p>
           </CardContent>
         </Card>
         <Card>
@@ -67,8 +120,8 @@ export default function KpiPage() {
             <TrendingDown className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">142</div>
-            <p className="text-xs text-muted-foreground">-8 papers from last quarter</p>
+            <div className="text-2xl font-bold">{loading ? '--' : stats?.counts.faculty || 0}</div>
+            <p className="text-xs text-muted-foreground">Active faculty tracked</p>
           </CardContent>
         </Card>
       </div>
@@ -178,8 +231,8 @@ export default function KpiPage() {
                 <CardTitle className="text-sm font-medium">Faculty Utilization</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">92.3%</div>
-                <Progress value={92.3} className="mt-2" />
+                <div className="text-2xl font-bold">{loading ? '--' : `${stats?.averages.facultyUtilization.toFixed(1)}%`}</div>
+                <Progress value={stats?.averages.facultyUtilization || 0} className="mt-2" />
               </CardContent>
             </Card>
             <Card>
@@ -187,8 +240,12 @@ export default function KpiPage() {
                 <CardTitle className="text-sm font-medium">Avg Teaching Load</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">18.5 hrs/wk</div>
-                <p className="text-xs text-muted-foreground mt-2">Within optimal range</p>
+                <div className="text-2xl font-bold">
+                  {loading
+                    ? '--'
+                    : `${((stats?.counts.students || 0) / Math.max(1, stats?.counts.faculty || 1)).toFixed(1)}:1`}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">Student-faculty ratio</p>
               </CardContent>
             </Card>
             <Card>
@@ -196,8 +253,12 @@ export default function KpiPage() {
                 <CardTitle className="text-sm font-medium">Research Active</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">68%</div>
-                <p className="text-xs text-muted-foreground mt-2">98 of 145 faculty</p>
+                <div className="text-2xl font-bold">
+                  {loading
+                    ? '--'
+                    : `${departmentData.length ? ((departmentData.filter((dept) => dept.research >= 75).length / departmentData.length) * 100).toFixed(0) : '0'}%`}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">Departments with strong performance profile</p>
               </CardContent>
             </Card>
           </div>

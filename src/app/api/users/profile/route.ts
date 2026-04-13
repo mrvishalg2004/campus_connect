@@ -4,7 +4,7 @@ import User from '@/models/User';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
 
 // GET - Get user profile
 export async function GET(request: NextRequest) {
@@ -46,14 +46,41 @@ export async function PUT(request: NextRequest) {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
     const body = await request.json();
 
-    // Remove sensitive fields that shouldn't be updated here
-    delete body.password;
-    delete body.email;
-    delete body.role;
+    const allowedFields = [
+      'name',
+      'avatarUrl',
+      'phone',
+      'rollNumber',
+      'semester',
+      'address',
+      'department',
+    ] as const;
+
+    const updateData: Record<string, any> = {};
+
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field];
+      }
+    }
+
+    if (updateData.semester !== undefined && updateData.semester !== '') {
+      const semester = Number(updateData.semester);
+
+      if (!Number.isFinite(semester) || semester < 1 || semester > 8) {
+        return NextResponse.json({ error: 'Semester must be between 1 and 8' }, { status: 400 });
+      }
+
+      updateData.semester = semester;
+    }
+
+    if (updateData.semester === '') {
+      delete updateData.semester;
+    }
 
     const user = await User.findByIdAndUpdate(
       decoded.userId,
-      body,
+      updateData,
       { new: true, runValidators: true }
     ).select('-password');
 

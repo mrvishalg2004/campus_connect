@@ -7,6 +7,10 @@ export interface IUser extends Document {
   password: string;
   role: 'student' | 'teacher' | 'hod' | 'principal';
   avatarUrl: string;
+  phone?: string;
+  rollNumber?: string;
+  semester?: number;
+  address?: string;
   department?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +41,24 @@ const UserSchema: Schema = new Schema(
       default: 'student',
     },
     avatarUrl: {
+      type: String,
+      default: '',
+    },
+    phone: {
+      type: String,
+      default: '',
+    },
+    rollNumber: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    semester: {
+      type: Number,
+      min: 1,
+      max: 8,
+    },
+    address: {
       type: String,
       default: '',
     },

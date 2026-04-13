@@ -1,28 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Notification from '@/models/Notification';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+import { getAuthUser, unauthorizedResponse } from '@/lib/auth';
 
 // POST - Bulk create notifications
 export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
-    // Verify authentication
-    const cookieStore = cookies();
-    const token = cookieStore.get('auth-token')?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
-
     // Only teachers, HODs, and principals can send bulk notifications
-    if (!['teacher', 'hod', 'principal'].includes(decoded.role)) {
+    if (!['teacher', 'hod', 'principal'].includes(authUser.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

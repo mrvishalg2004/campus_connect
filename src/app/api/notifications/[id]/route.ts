@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Notification from '@/models/Notification';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+import { getAuthUser, hasRole, unauthorizedResponse } from '@/lib/auth';
 
 // PUT - Update single notification
 export async function PUT(
@@ -14,8 +11,25 @@ export async function PUT(
   try {
     await dbConnect();
 
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
     const notificationId = params.id;
     const body = await request.json();
+
+    const existing = await Notification.findById(notificationId);
+    if (!existing) {
+      return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
+    }
+
+    if (
+      existing.userId.toString() !== authUser.userId &&
+      !hasRole(authUser, ['teacher', 'hod', 'principal'])
+    ) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
 
     const notification = await Notification.findByIdAndUpdate(
       notificationId,
@@ -41,12 +55,26 @@ export async function DELETE(
   try {
     await dbConnect();
 
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
     const notificationId = params.id;
-    const notification = await Notification.findByIdAndDelete(notificationId);
+    const notification = await Notification.findById(notificationId);
 
     if (!notification) {
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
     }
+
+    if (
+      notification.userId.toString() !== authUser.userId &&
+      !hasRole(authUser, ['teacher', 'hod', 'principal'])
+    ) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
+
+    await Notification.findByIdAndDelete(notificationId);
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {

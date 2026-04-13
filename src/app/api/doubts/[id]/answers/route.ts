@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Doubt from '@/models/Doubt';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+import mongoose from 'mongoose';
+import { getAuthUser, unauthorizedResponse } from '@/lib/auth';
 
 // POST - Add answer to doubt
 export async function POST(
@@ -14,15 +12,10 @@ export async function POST(
   try {
     await dbConnect();
 
-    // Get authenticated user from token
-    const cookieStore = cookies();
-    const token = cookieStore.get('auth-token')?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
-
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
 
     const doubtId = params.id;
     const body = await request.json();
@@ -39,7 +32,7 @@ export async function POST(
       isAnonymous: body.isAnonymous !== undefined ? body.isAnonymous : true,
       files: body.files || [],
       createdAt: new Date(),
-      authorId: decoded.userId, // Store author ID for tracking even if anonymous
+      authorId: new mongoose.Types.ObjectId(authUser.userId),
     };
 
     doubt.answers.push(answer);

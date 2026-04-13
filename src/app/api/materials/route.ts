@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Material from '@/models/Material';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+import { getAuthUser, unauthorizedResponse } from '@/lib/auth';
 
 // GET - Fetch materials
 export async function GET(request: NextRequest) {
@@ -57,19 +54,14 @@ export async function POST(request: NextRequest) {
     await dbConnect();
     console.log('=== Materials POST: Starting ===');
 
-    // Get authenticated user from token
-    const cookieStore = cookies();
-    const token = cookieStore.get('auth-token')?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
-
     // Only teachers can upload materials
-    if (decoded.role !== 'teacher') {
-      return NextResponse.json({ error: 'Only teachers can upload materials' }, { status: 403 });
+    if (authUser.role !== 'teacher') {
+      return unauthorizedResponse('Only teachers can upload materials', 403);
     }
 
     const body = await request.json();
@@ -78,13 +70,14 @@ export async function POST(request: NextRequest) {
     // Add teacherId from authenticated user
     const materialData = {
       ...body,
-      teacherId: decoded.userId,
+      teacherId: authUser.userId,
     };
 
-    const material = await Material.create(materialData);
+    const material = new Material(materialData);
+    await material.save();
     console.log('=== Materials POST: Created ===', material._id);
 
-    const populatedMaterial = await Material.findById((material as any)._id)
+    const populatedMaterial = await Material.findById(material._id)
       .populate('teacherId', 'name email role');
 
     return NextResponse.json({ success: true, data: populatedMaterial }, { status: 201 });

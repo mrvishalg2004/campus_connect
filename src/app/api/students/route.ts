@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import { getAuthUser, hasRole, unauthorizedResponse } from '@/lib/auth';
 
 // GET - Fetch all students
 export async function GET(request: NextRequest) {
@@ -8,6 +9,15 @@ export async function GET(request: NextRequest) {
     console.log('=== Students API: Starting ===');
     await dbConnect();
     console.log('=== Students API: DB Connected ===');
+
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
+    if (!hasRole(authUser, ['teacher', 'hod', 'principal'])) {
+      return unauthorizedResponse('Forbidden', 403);
+    }
 
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role') || 'student';

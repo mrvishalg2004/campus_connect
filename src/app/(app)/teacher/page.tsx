@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -8,21 +9,97 @@ import { Button } from "@/components/ui/button";
 import { ArrowUpRight, BookOpen, Calendar, CheckCircle, Clock } from "lucide-react";
 import Link from "next/link";
 import StudentsList from "@/components/dashboard/StudentsList";
+import NoticesPanel from '@/components/dashboard/NoticesPanel';
 
-const timetable = [
-  { time: '09:00 - 10:00', subject: 'Quantum Physics', class: 'BSc Physics - Sem 3', type: 'Lecture' },
-  { time: '10:00 - 11:00', subject: 'Data Structures', class: 'BSc CS - Sem 3', type: 'Lab' },
-  { time: '11:00 - 12:00', subject: 'Free', class: '', type: '' },
-  { time: '12:00 - 13:00', subject: 'Advanced Algorithms', class: 'MSc CS - Sem 1', type: 'Lecture' },
-];
+type Assignment = {
+    _id: string;
+    title: string;
+    class: string;
+    subject: string;
+    dueDate: string;
+    submissions: any[];
+};
 
-const pendingAssignments = [
-    { id: 1, title: 'Quantum Mechanics: Problem Set 2', class: 'BSc Physics - Sem 3', submitted: 28, total: 30, dueDate: '2 days ago' },
-    { id: 2, title: 'DSA Assignment 3: Trees', class: 'BSc CS - Sem 3', submitted: 35, total: 35, dueDate: 'in 3 days' },
-    { id: 3, title: 'Algorithm Design Paper', class: 'MSc CS - Sem 1', submitted: 12, total: 15, dueDate: 'in 5 days' },
-];
+type AttendanceRecord = {
+    status: 'present' | 'absent' | 'late';
+};
+
+type DoubtRecord = {
+    isResolved: boolean;
+};
 
 export default function TeacherDashboard() {
+    const [assignments, setAssignments] = useState<Assignment[]>([]);
+    const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+    const [doubts, setDoubts] = useState<DoubtRecord[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            setLoading(true);
+
+            const [assignmentsRes, attendanceRes, doubtsRes] = await Promise.all([
+                fetch('/api/assignments'),
+                fetch('/api/attendance'),
+                fetch('/api/doubts'),
+            ]);
+
+            const [assignmentsData, attendanceData, doubtsData] = await Promise.all([
+                assignmentsRes.json(),
+                attendanceRes.json(),
+                doubtsRes.json(),
+            ]);
+
+            if (assignmentsData.success) {
+                setAssignments(assignmentsData.data || []);
+            }
+
+            if (attendanceData.success) {
+                setAttendance(attendanceData.data || []);
+            }
+
+            if (doubtsData.success) {
+                setDoubts(doubtsData.data || []);
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const pendingAssignments = useMemo(
+        () =>
+            assignments.map((assignment) => ({
+                id: assignment._id,
+                title: assignment.title,
+                class: assignment.class,
+                submitted: assignment.submissions?.length || 0,
+                total: assignment.submissions?.length || 0,
+                dueDate: new Date(assignment.dueDate).toLocaleDateString(),
+            })),
+        [assignments]
+    );
+
+    const timetable = useMemo(
+        () =>
+            assignments.slice(0, 4).map((assignment) => ({
+                time: new Date(assignment.dueDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                subject: assignment.subject,
+                class: assignment.class,
+                type: 'Review',
+            })),
+        [assignments]
+    );
+
+    const averageAttendance = attendance.length
+        ? (attendance.filter((record) => record.status === 'present' || record.status === 'late').length / attendance.length) * 100
+        : 0;
+
+    const openDoubts = doubts.filter((doubt) => !doubt.isResolved).length;
+
   return (
     <>
     <div className="grid gap-4 md:gap-8 lg:grid-cols-3">
@@ -32,19 +109,19 @@ export default function TeacherDashboard() {
                 <Card>
                     <CardHeader className="pb-2">
                         <CardDescription>Avg. Class Attendance</CardDescription>
-                        <CardTitle className="text-4xl">92.5%</CardTitle>
+                        <CardTitle className="text-4xl">{loading ? '--' : `${averageAttendance.toFixed(1)}%`}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-xs text-muted-foreground">+1.5% from last week</div>
+                        <div className="text-xs text-muted-foreground">Calculated from recorded attendance entries</div>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="pb-2">
-                        <CardDescription>Avg. Doubt Response Time</CardDescription>
-                        <CardTitle className="text-4xl">3.2 hrs</CardTitle>
+                        <CardDescription>Open Doubts</CardDescription>
+                        <CardTitle className="text-4xl">{loading ? '--' : openDoubts}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-xs text-muted-foreground">-0.5hr from last week</div>
+                        <div className="text-xs text-muted-foreground">Active unresolved student doubts</div>
                     </CardContent>
                 </Card>
             </div>
@@ -86,14 +163,14 @@ export default function TeacherDashboard() {
         </div>
 
         {/* Timetable */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 grid gap-4 auto-rows-max">
             <Card>
                 <CardHeader>
                     <CardTitle>Today's Timetable</CardTitle>
                     <CardDescription>{new Date().toDateString()}</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
-                    {timetable.map((slot, index) => (
+                    {timetable.length > 0 ? timetable.map((slot, index) => (
                         <div key={index} className="flex items-center gap-4">
                             <div className="text-sm text-muted-foreground w-24">{slot.time}</div>
                             <div className="flex-1">
@@ -108,7 +185,9 @@ export default function TeacherDashboard() {
                             </div>
                             {slot.type && <Badge variant={slot.type === 'Lab' ? 'destructive' : 'secondary'}>{slot.type}</Badge>}
                         </div>
-                    ))}
+                                        )) : (
+                                            <p className="text-sm text-muted-foreground">No scheduled items available yet.</p>
+                                        )}
                 </CardContent>
                 <CardFooter>
                     <Button asChild variant="outline" className="w-full">
@@ -116,6 +195,7 @@ export default function TeacherDashboard() {
                     </Button>
                 </CardFooter>
             </Card>
+            <NoticesPanel viewAllHref="/teacher/notifications" />
         </div>
     </div>
 

@@ -43,10 +43,12 @@ CampusConnect is engineered from the ground up as a **cross-platform React Nativ
 Experience the real mobile application workflow in action—including authentication, student event exploration, Razorpay payment flow, coordinator attendance validation, and instant PDF certificate generation:
 
 <div align="center">
-  <video src="docs/presentation_video.mp4" width="85%" controls="controls" poster="docs/readme-assets/device-mockups/dashboard-device-mockup.png">
-    Your browser does not support the video tag. <a href="docs/presentation_video.mp4">Click here to download and view the presentation video.</a>
-  </video>
-  <p><sub><em>Direct video link: <a href="docs/presentation_video.mp4">docs/presentation_video.mp4</a></em></sub></p>
+  <a href="docs/presentation_video.mp4">
+    <img src="docs/presentation_demo.gif" alt="CampusConnect Live Demo Preview" width="90%" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
+  </a>
+  <p>
+    <sub>▶️ <strong>Interactive Demo Window:</strong> Click the preview above or <a href="docs/presentation_video.mp4"><strong>Click here to open the full HD video (MP4)</strong></a>.</sub>
+  </p>
 </div>
 
 ---
